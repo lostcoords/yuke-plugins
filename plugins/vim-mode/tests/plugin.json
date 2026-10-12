@@ -1,0 +1,4 @@
+{
+  "name": "vim-mode",
+  "extensions": { "sh.yuke": { "entry": "./probe.js", "uses": ["tui"] } }
+}
