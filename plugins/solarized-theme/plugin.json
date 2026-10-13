@@ -1,0 +1,11 @@
+{
+  "name": "solarized-theme",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "./index.js",
+      "uses": [
+        "tui"
+      ]
+    }
+  }
+}
