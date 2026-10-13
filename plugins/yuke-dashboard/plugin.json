@@ -1,0 +1,10 @@
+{
+  "name": "yuke-dashboard",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "./index.js",
+      "uses": ["tui", "composer-vim"],
+      "provides": ["yuke-dashboard"]
+    }
+  }
+}
