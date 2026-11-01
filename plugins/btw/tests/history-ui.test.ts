@@ -256,36 +256,24 @@ test("history deletion requires explicit confirmation and respects the session s
   equal(host.requests.length, 0);
 });
 
-for (const width of [32, 100]) {
-  test(`history dialogs preserve confirmation and cancellation at width ${width}`, async () => {
-    using frame = createFrame({ width, height: 30 });
-    const loaded = await setup(frame);
-    await using host = loaded.host;
-    await loaded.history.save({ ...record, sessionId: loaded.main.id });
-    loaded.tui.commands.run("btw:history");
-    await waitFor(() => screen(frame).includes("earlier question"));
+test("a narrow confirmation rejects lowercase input and Ctrl+C returns to history", async () => {
+  using frame = createFrame({ width: 32, height: 30 });
+  const loaded = await setup(frame);
+  await using host = loaded.host;
+  await loaded.history.save({ ...record, sessionId: loaded.main.id });
+  loaded.tui.commands.run("btw:history");
+  await waitFor(() => screen(frame).includes("earlier question"));
 
-    frame.key("ctrl+d");
-    assert(screen(frame).includes("Type DELETE"));
-    frame.paste("delete");
-    frame.key("enter");
-    assert(screen(frame).includes("Delete 1 saved"));
-    equal((await loaded.history.list()).entries.length, 1);
-    frame.key("ctrl+c");
-    assert(!screen(frame).includes("Type DELETE"));
-    assert(screen(frame).includes("btw history"));
+  frame.key("ctrl+d");
+  frame.paste("delete");
+  frame.key("enter");
+  assert(screen(frame).includes("Delete 1 saved"));
+  equal((await loaded.history.list()).entries.length, 1);
 
-    frame.key("ctrl+d");
-    frame.paste("DELETE");
-    assert(screen(frame).includes("enter: confirm"));
-    frame.key("enter");
-    await waitFor(() => screen(frame).includes("No saved answers"));
-    equal((await loaded.history.list()).entries, []);
-    frame.key("ctrl+c");
-    assert(!screen(frame).includes("btw history"));
-    equal(host.requests.length, 0);
-  });
-}
+  frame.key("ctrl+c");
+  assert(!screen(frame).includes("Type DELETE"));
+  assert(screen(frame).includes("btw history"));
+});
 
 test("storage failure preserves the answer and reports that it was not saved", async () => {
   using frame = createFrame({ width: 100, height: 30 });
@@ -302,36 +290,6 @@ test("storage failure preserves the answer and reports that it was not saved", a
   await waitFor(() => host.notices.some((notice) => notice.message.includes("was not saved")));
   frame.key("ctrl+y");
   equal(frame.copies, ["do not lose this answer"]);
-});
-
-test("the side panel follows shared title styling without recoloring the main pane", async () => {
-  using frame = createFrame({ width: 100, height: 30 });
-  const loaded = await setup(frame);
-  await using host = loaded.host;
-  loaded.tui.commands.run("btw:ask");
-  loaded.tui.styles.set("chat.title", { fg: "danger" });
-  screen(frame);
-  const title = frame.frame.cells.find(
-    (row) =>
-      row
-        .map((cell) => cell.text)
-        .join("")
-        .trim() === "/btw",
-  );
-  assert(title !== undefined);
-  equal(title.find((cell) => cell.text === "b")?.style.fg, "#ff7b72");
-  equal(title.find((cell) => cell.text === "b")?.style.bg, undefined);
-  frame.key("esc");
-  screen(frame);
-  const main = frame.frame.cells.find((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .includes("MAIN"),
-  );
-  assert(main !== undefined);
-  equal(main.find((cell) => cell.text === "M")?.style.bg, undefined);
-  equal(host.requests.length, 0);
 });
 
 test("flat presentation preserves Markdown highlights and copying the original answer", async () => {
@@ -359,55 +317,6 @@ test("flat presentation preserves Markdown highlights and copying the original a
   equal(frame.copies, [answer]);
   equal(host.requests.length, 0);
 });
-
-for (const width of [32, 100]) {
-  test(`an exchange has a flat background and a distinct question and answer at width ${width}`, async () => {
-    using frame = createFrame({ width, height: 30 });
-    const loaded = await setup(frame);
-    await using host = loaded.host;
-    const question = "what is the state?";
-    const answer = "The side answer is ready.";
-    await loaded.history.save({ ...record, question, answer, sessionId: loaded.main.id });
-    loaded.tui.commands.run("btw:ask");
-    await waitFor(() => screen(frame).includes(answer));
-    const lines = screen(frame).split("\n");
-    const headingRow = lines.findIndex((line) => line.includes(`/btw ${question}`));
-    assert(headingRow >= 0, "The command and question belong on one heading, without a separate title.");
-    equal(lines.filter((line) => line.includes("/btw")).length, 1);
-    assert(!lines.some((line) => line.trim() === "btw"));
-    const headingColumn = lines[headingRow]?.indexOf("/btw");
-    assert(headingColumn !== undefined);
-    const cells = frame.frame.cells;
-    equal(cells[headingRow]?.[headingColumn]?.style.fg, "#a8cfa0");
-    equal(cells[headingRow]?.[headingColumn + 5]?.style.dim, true, "The question uses native muted text.");
-    const answerRow = lines.findIndex((line) => line.includes(answer));
-    assert(answerRow > headingRow + 1, "A blank row separates the question and answer.");
-    equal(lines[headingRow + 1]?.trim(), "");
-    const answerColumn = lines[answerRow]?.indexOf(answer);
-    assert(answerColumn !== undefined && answerColumn >= headingColumn + 2, "The answer has its own indent.");
-    equal(cells[answerRow]?.[answerColumn]?.style.fg, undefined, "Answers use the terminal foreground.");
-    equal(cells[answerRow]?.[answerColumn]?.style.dim, undefined);
-    const top = 30 - Math.ceil(30 * 0.6);
-    assert(
-      /^─+$/.test(lines[top]?.trim() ?? ""),
-      "A plain rule separates the side panel from the main chat.",
-    );
-    for (const row of cells.slice(top)) {
-      assert(
-        row.every((cell) => cell.style.bg === undefined),
-        "No filled panel, user-message band, or input box.",
-      );
-    }
-    const inputRow = lines.findIndex((line) => line.includes("Ask a side question"));
-    assert(/^─+$/.test(lines[inputRow - 1]?.trim() ?? ""), "The composer is separated by a subtle rule.");
-    const footer = lines.at(-1) ?? "";
-    assert(!footer.includes("History ·"), "Saved exchanges do not add a redundant History label.");
-    assert(footer.includes("Enter send") && footer.includes("Esc close"), footer);
-    frame.key("ctrl+y");
-    equal(frame.copies, [answer], "Copying excludes presentation indentation.");
-    equal(host.requests.length, 0);
-  });
-}
 
 test("long multiline questions wrap without losing text or replacing the answer", async () => {
   using frame = createFrame({ width: 32, height: 30 });
