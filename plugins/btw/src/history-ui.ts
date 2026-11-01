@@ -1,8 +1,7 @@
 import type { PluginContext } from "yuke:plugins";
-import { Picker, strokeOf, TextEditor, type Tui } from "yuke:tui";
+import { Picker, TextEditor, type Tui } from "yuke:tui";
 
 import type { History, HistoryEntry } from "./history.ts";
-import { panelRect, panelView } from "./style.ts";
 
 export function browseHistory(
   ctx: PluginContext,
@@ -30,46 +29,47 @@ export function browseHistory(
         .map((entry) => ({ item: entry }));
     },
     choose: (entry) => {
-      overlay.close();
+      dialog.close();
       openEntry(entry);
     },
-    cancel: () => overlay.close(),
+    cancel: () => dialog.close(),
   });
 
-  const overlay = tui.overlay(
-    () =>
-      panelView({
-        initialFocus: picker.input,
-        layout: (size) => [
-          {
-            view: picker,
-            rect: {
-              column: 1,
-              row: 2,
-              width: Math.max(0, size.width - 2),
-              height: Math.max(0, size.height - 3),
-            },
-          },
-        ],
-        draw: (canvas) => {
-          const scope = allSessions ? "all sessions" : "this session";
-          const hints =
-            canvas.width < 60
-              ? "Enter open · Esc back"
-              : "Enter open · Tab scope · Ctrl+D delete · Ctrl+X clear · Esc back";
-
-          canvas.fill(0, 0, canvas.width, canvas.height, "btw.panel");
-          canvas.text(1, 0, `btw history · ${scope}`, "btw.title");
-
-          if (entries === undefined || entries.length === 0) {
-            canvas.text(1, 1, entries === undefined ? "Loading…" : "No saved answers", "btw.hint");
-          }
-
-          canvas.text(1, canvas.height - 1, hints, "btw.hint");
+  const dialog = tui.dialog({
+    title: () => {
+      const scope = allSessions ? "all sessions" : "this session";
+      const status = entries === undefined ? "Loading… · " : entries.length === 0 ? "No saved answers · " : "";
+      return `btw history · ${status}${scope}`;
+    },
+    body: picker,
+    keys: [
+      { key: "enter", label: "open", when: () => picker.selected !== undefined, run: () => picker.choose() },
+      {
+        key: "tab",
+        label: "scope",
+        when: () => sessionId !== undefined,
+        run: () => {
+          allSessions = !allSessions;
+          void load();
         },
-      }),
-    { place: panelRect },
-  );
+      },
+      {
+        key: "ctrl+d",
+        label: "delete",
+        when: () => picker.selected !== undefined,
+        run: () => {
+          if (picker.selected !== undefined) remove([picker.selected]);
+        },
+      },
+      {
+        key: "ctrl+x",
+        label: "clear",
+        when: () => entries !== undefined && entries.length > 0,
+        run: () => remove(entries ?? []),
+      },
+      { key: "ctrl+c", label: "close", run: () => dialog.close() },
+    ],
+  });
 
   const load = async (): Promise<void> => {
     const version = ++loadVersion;
@@ -79,7 +79,7 @@ export function browseHistory(
 
     try {
       const result = await history.list(allSessions ? undefined : sessionId);
-      if (overlay.signal.aborted || version !== loadVersion) return;
+      if (dialog.signal.aborted || version !== loadVersion) return;
 
       entries = result.entries;
       picker.setItems(entries);
@@ -90,11 +90,19 @@ export function browseHistory(
 
       tui.requestFrame();
     } catch (error) {
-      if (overlay.signal.aborted || version !== loadVersion) return;
+      if (dialog.signal.aborted || version !== loadVersion) return;
 
-      overlay.close();
+      dialog.close();
       ctx.notify("error", `History could not be read: ${String(error)}`);
     }
+  };
+
+  const remove = (targets: readonly HistoryEntry[]): void => {
+    if (targets.length === 0) return;
+    const scope = allSessions ? "across sessions" : "from this session";
+    confirmDelete(tui, `Delete ${targets.length} saved answer(s) ${scope}?`, dialog.signal, () => {
+      void deleteEntries(targets);
+    });
   };
 
   const deleteEntries = async (targets: readonly HistoryEntry[]): Promise<void> => {
@@ -108,74 +116,27 @@ export function browseHistory(
     await load();
   };
 
-  picker.input.extend(overlay.signal).onKey((event) => {
-    const key = strokeOf(event);
-
-    if (key === "tab" && sessionId !== undefined) {
-      allSessions = !allSessions;
-      void load();
-      return true;
-    }
-
-    if (key !== "ctrl+d" && key !== "ctrl+x") return false;
-
-    let targets = entries ?? [];
-    if (key === "ctrl+d") {
-      targets = picker.selected === undefined ? [] : [picker.selected];
-    }
-
-    if (targets.length === 0) return true;
-
-    const scope = allSessions ? "across sessions" : "from this session";
-    confirmDelete(tui, `Delete ${targets.length} saved answer(s) ${scope}?`, () => {
-      void deleteEntries(targets);
-    });
-
-    return true;
-  }, "beforeKeymap");
-
   void load();
 }
 
-function confirmDelete(tui: Tui, title: string, confirm: () => void): void {
-  const input = new TextEditor({
-    placeholder: "Type DELETE to confirm",
-    submit: (draft) => {
-      if (draft.text !== "DELETE") return;
-
-      overlay.close();
-      confirm();
-    },
-  });
-
-  const overlay = tui.overlay(
-    () =>
-      panelView({
-        initialFocus: input,
-        layout: (size) => [
-          { view: input, rect: { column: 1, row: 2, width: Math.max(0, size.width - 2), height: 1 } },
-        ],
-        draw: (canvas) => {
-          canvas.fill(0, 0, canvas.width, canvas.height, "btw.panel");
-          canvas.text(1, 0, title, "btw.title");
-          canvas.text(1, canvas.height - 1, "Enter confirm · Esc keep", "btw.hint");
+function confirmDelete(tui: Tui, title: string, signal: AbortSignal, confirm: () => void): void {
+  const input = new TextEditor({ multiline: false, placeholder: "Type DELETE to confirm" });
+  const dialog = tui.dialog({
+    title: () => title,
+    body: input,
+    rows: 3,
+    signal,
+    keys: [
+      {
+        key: "enter",
+        label: "confirm",
+        when: () => input.state.text === "DELETE",
+        run: () => {
+          dialog.close();
+          confirm();
         },
-      }),
-    {
-      place: (size) => ({
-        column: 0,
-        row: Math.max(0, size.height - 5),
-        width: size.width,
-        height: Math.min(5, size.height),
-      }),
-    },
-  );
-
-  input.extend(overlay.signal).onKey((event) => {
-    const key = strokeOf(event);
-    if (key !== "esc" && key !== "ctrl+c") return false;
-
-    overlay.close();
-    return true;
-  }, "beforeKeymap");
+      },
+      { key: "ctrl+c", label: "keep", run: () => dialog.close() },
+    ],
+  });
 }

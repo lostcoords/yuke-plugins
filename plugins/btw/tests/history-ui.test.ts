@@ -256,6 +256,37 @@ test("history deletion requires explicit confirmation and respects the session s
   equal(host.requests.length, 0);
 });
 
+for (const width of [32, 100]) {
+  test(`history dialogs preserve confirmation and cancellation at width ${width}`, async () => {
+    using frame = createFrame({ width, height: 30 });
+    const loaded = await setup(frame);
+    await using host = loaded.host;
+    await loaded.history.save({ ...record, sessionId: loaded.main.id });
+    loaded.tui.commands.run("btw:history");
+    await waitFor(() => screen(frame).includes("earlier question"));
+
+    frame.key("ctrl+d");
+    assert(screen(frame).includes("Type DELETE"));
+    frame.paste("delete");
+    frame.key("enter");
+    assert(screen(frame).includes("Delete 1 saved"));
+    equal((await loaded.history.list()).entries.length, 1);
+    frame.key("ctrl+c");
+    assert(!screen(frame).includes("Type DELETE"));
+    assert(screen(frame).includes("btw history"));
+
+    frame.key("ctrl+d");
+    frame.paste("DELETE");
+    assert(screen(frame).includes("enter: confirm"));
+    frame.key("enter");
+    await waitFor(() => screen(frame).includes("No saved answers"));
+    equal((await loaded.history.list()).entries, []);
+    frame.key("ctrl+c");
+    assert(!screen(frame).includes("btw history"));
+    equal(host.requests.length, 0);
+  });
+}
+
 test("storage failure preserves the answer and reports that it was not saved", async () => {
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame, [reply.text("main answer"), reply.text("do not lose this answer")]);
