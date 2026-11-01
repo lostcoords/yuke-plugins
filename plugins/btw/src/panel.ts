@@ -103,7 +103,7 @@ export function openPanel(
 
     if (overlay.signal.aborted) return;
 
-    answer = { kind: "done", text };
+    answer = { kind: "done", text: displayText };
     showExchange(question, displayText);
   };
 

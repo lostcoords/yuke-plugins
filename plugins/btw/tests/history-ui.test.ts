@@ -87,6 +87,34 @@ for (const width of [32, 100]) {
   });
 }
 
+test("a tool-call response copies the same displayed answer before and after reopening history", async () => {
+  using frame = createFrame({ width: 100, height: 30 });
+  const loaded = await setup(frame, [reply.text("main answer"), reply.toolCall("mark", {})]);
+  await using host = loaded.host;
+  await loaded.main.send("main task");
+
+  loaded.tui.commands.run("btw:ask");
+  frame.paste("side question");
+  frame.key("enter");
+  const notice = "[Response ended: tool_calls. No tool was executed.]";
+  await waitFor(() => screen(frame).includes(notice));
+
+  const expected = `The model returned no text. No tool was executed.\n\n${notice}`;
+  const saved = (await loaded.history.list(loaded.main.id)).entries[0];
+  equal(saved?.answer, expected);
+  frame.key("ctrl+y");
+  equal(frame.copies, [expected]);
+
+  frame.key("esc");
+  loaded.tui.commands.run("btw:history");
+  await waitFor(() => screen(frame).includes("side question"));
+  frame.key("enter");
+  await waitFor(() => screen(frame).includes(notice));
+  frame.key("ctrl+y");
+  equal(frame.copies, [expected, expected]);
+  equal(host.requests.length, 2);
+});
+
 test("history search finds answer text and can browse other sessions without a model call", async () => {
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame);
