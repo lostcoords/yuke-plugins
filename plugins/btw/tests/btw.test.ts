@@ -174,7 +174,10 @@ test("a session without a captured round refuses to send an uncached fallback re
   await using host = await createHost({ plugins: [plugin] });
   const main = await host.openSession();
   const error = await rejects(ask(main.id, "side question", new AbortController().signal));
-  assert(error instanceof Error && error.message.includes("No cached round"));
+  assert(
+    error instanceof Error &&
+      error.message === "Send a message in the main conversation before using /btw.",
+  );
   equal(host.requests.length, 0);
 });
 
@@ -629,10 +632,16 @@ test("closing the parent session discards its cached side-request handle", async
   await main.send("main task");
   await main.close();
   const error = await rejects(ask(main.id, "a stale side question", new AbortController().signal));
-  assert(error instanceof Error && error.message.includes("No cached round"));
+  assert(
+    error instanceof Error &&
+      error.message === "Send a message in the main conversation before using /btw.",
+  );
   const fresh = await host.openSession();
   const missing = await rejects(ask(fresh.id, "another question", new AbortController().signal));
-  assert(missing instanceof Error && missing.message.includes("No cached round"));
+  assert(
+    missing instanceof Error &&
+      missing.message === "Send a message in the main conversation before using /btw.",
+  );
   equal(host.requests.length, 1, "A closed session's snapshot cannot send or leak into another session.");
 });
 

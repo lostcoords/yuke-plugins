@@ -20,7 +20,7 @@ export function apply(ctx: PluginContext): undefined {
     const sessionId = pane === undefined ? undefined : ctx.get("chat").session(pane);
 
     if (question !== "" && cachedModel(sessionId) === undefined) {
-      ctx.notify("warn", NO_ROUND);
+      ctx.notify("info", NO_ROUND);
       return false;
     }
 

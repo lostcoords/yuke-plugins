@@ -65,7 +65,7 @@ export function openPanel(
 
     const model = cachedModel(sessionId);
     if (sessionId === undefined || model === undefined) {
-      ctx.notify("warn", NO_ROUND);
+      ctx.notify("info", NO_ROUND);
       return;
     }
 

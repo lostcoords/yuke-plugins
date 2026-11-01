@@ -1,7 +1,6 @@
 import type { ModelReference, RoundBeforeEvent, SessionContext, SideRequestResult } from "yuke:plugins";
 
-export const NO_ROUND =
-  "No cached round yet. Send a main message first. If you resumed with -c, run /reload while idle, then send a message.";
+export const NO_ROUND = "Send a message in the main conversation before using /btw.";
 
 type CachedRound = {
   request: RoundBeforeEvent["sideRequest"];

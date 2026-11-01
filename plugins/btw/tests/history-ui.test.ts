@@ -115,6 +115,21 @@ test("a tool-call response copies the same displayed answer before and after reo
   equal(host.requests.length, 2);
 });
 
+test("asking without a main round shows an info notice and sends no request", async () => {
+  using frame = createFrame({ width: 100, height: 30 });
+  const loaded = await setup(frame);
+  await using host = loaded.host;
+
+  loaded.tui.commands.run("btw:ask");
+  frame.paste("side question");
+  frame.key("enter");
+  await waitFor(() => host.notices.length > 0);
+  equal(host.notices.map(({ level, message }) => ({ level, message })), [
+    { level: "info", message: "Send a message in the main conversation before using /btw." },
+  ]);
+  equal(host.requests.length, 0);
+});
+
 test("history search finds answer text and can browse other sessions without a model call", async () => {
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame);
