@@ -1,0 +1,11 @@
+{
+  "name": "btw",
+  "version": "0.1.0",
+  "description": "Parallel, cache-preserving side questions for Yuke.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"]
+    }
+  }
+}
