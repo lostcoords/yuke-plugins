@@ -3,7 +3,7 @@
 ## Native Yuke tests
 
 ```sh
-yuke test ~/.config/yuke-rs/plugins/btw/tests
+yuke test ~/.config/yuke/plugins/btw/tests
 ```
 
 These use the exported `yuke:test` helpers: `createHost` for controlled model replies and
@@ -17,7 +17,7 @@ composer sizing, resize reflow, mouse alignment, and draft/focus preservation.
 ## Optional terminal probe
 
 ```sh
-python3 ~/.config/yuke-rs/plugins/btw/tests/terminal.py
+python3 ~/.config/yuke/plugins/btw/tests/terminal.py
 ```
 
 This separate development tool launches the installed Yuke in owned PTY processes. It

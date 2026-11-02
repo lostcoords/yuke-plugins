@@ -41,7 +41,7 @@ In history, type to search, **Tab** switches session/all history, and **Enter** 
 
 Each question is independent and uses the input context of the latest main round. No tools run, and side questions and answers never enter the main conversation. Cache hits depend on the provider.
 
-History is stored as plain-text JSON under `~/.local/share/yuke-rs/plugins/btw/history/`. It persists until deleted, even if the main session is removed.
+History is stored as plain-text JSON under `~/.local/share/yuke/plugins/btw/history/`. It persists until deleted, even if the main session is removed.
 
 ## Tests
 

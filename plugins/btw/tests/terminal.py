@@ -76,7 +76,7 @@ def scenario(width, height, light, inline, resume, main_running=True, cancel_sid
     try:
         with tempfile.TemporaryDirectory(prefix='yuke-btw-pty-') as root:
             root = Path(root)
-            config = root / 'config/yuke-rs'
+            config = root / 'config/yuke'
             config.mkdir(parents=True)
             (root / 'work').mkdir()
             (config / 'config.json').write_text(json.dumps({'plugins': [str(PLUGIN)]}))
@@ -88,7 +88,7 @@ def scenario(width, height, light, inline, resume, main_running=True, cancel_sid
             env = dict(os.environ, HOME=str(root), XDG_CONFIG_HOME=str(root / 'config'), XDG_DATA_HOME=str(root / 'data'), XDG_CACHE_HOME=str(root / 'cache'), TERM='xterm-256color', COLORTERM='truecolor')
             seeded = subprocess.run([YUKE, '-p', 'seed task', '--model', 'local/small', '--reasoning', 'default'], env=env, cwd=root / 'work', capture_output=True, timeout=15)
             assert seeded.returncode == 0, seeded.stderr.decode()
-            (root / 'data/yuke-rs/plugins/chat/choice.json').write_text(json.dumps({'model': {'provider': 'local', 'model': 'small'}, 'reasoning': 'default'}))
+            (root / 'data/yuke/plugins/chat/choice.json').write_text(json.dumps({'model': {'provider': 'local', 'model': 'small'}, 'reasoning': 'default'}))
             pid, master = pty.fork()
             if pid == 0:
                 os.chdir(root / 'work')
@@ -203,7 +203,7 @@ def scenario(width, height, light, inline, resume, main_running=True, cancel_sid
                 wait_for(side_closed.is_set)
                 assert not release.is_set(), 'Closing the side panel must not stop the main stream.'
                 assert len(requests) == 3
-                assert not list((root / 'data/yuke-rs/plugins/btw/history').glob('*/*.json'))
+                assert not list((root / 'data/yuke/plugins/btw/history').glob('*/*.json'))
                 release.set()
                 pump(0.3)
                 os.kill(pid, signal.SIGTERM)
@@ -256,7 +256,7 @@ def scenario(width, height, light, inline, resume, main_running=True, cancel_sid
             assert composer.strip().startswith('›'), composer
             if main_running:
                 assert not release.is_set(), 'The main stream must still be blocked.'
-            files = list((root / 'data/yuke-rs/plugins/btw/history').glob('*/*.json'))
+            files = list((root / 'data/yuke/plugins/btw/history').glob('*/*.json'))
             assert len(files) == 1, files
             saved = json.loads(files[0].read_text())
             assert saved['question'] == 'explain this'

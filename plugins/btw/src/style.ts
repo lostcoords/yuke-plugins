@@ -3,7 +3,7 @@ import type { Rect, Size, Tui, View } from "yuke:tui";
 export function installStyles(tui: Tui): void {
   tui.styles.set({
     "btw.panel": { fg: "fg", bg: "bg" },
-    "btw.title": { link: "chat.title" },
+    "btw.title": { fg: "accent", bold: true },
     "btw.question": { link: "chat.meta" },
     "btw.working": { link: "chat.hint" },
     "btw.hint": { link: "chat.meta" },
