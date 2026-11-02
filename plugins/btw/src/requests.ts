@@ -16,7 +16,7 @@ export function session(context: SessionContext): () => void {
     rounds.set(context.sessionId, {
       request: event.sideRequest,
       signal: context.signal,
-      model: context.model,
+      model: context.settings.model,
     });
   };
 
