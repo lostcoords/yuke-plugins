@@ -13,16 +13,23 @@ for (const width of [32, 100]) {
           name: "chat",
           provides: ["chat"],
           apply: (ctx) => {
-            ctx.provide("chat", { session: () => undefined, show: async () => {}, onChange: () => () => {} });
+            ctx.provide("chat", {
+              session: () => undefined,
+              show: async () => {},
+              onChange: () => () => {},
+              addRows: () => () => {},
+            });
           },
         },
         {
           name: "btw",
           uses: ["chat"],
           apply: (ctx) => {
-            surface.tui.styles.set("chat.title", { fg: "accent", bold: true });
-            surface.tui.styles.set("chat.hint", { fg: "accent" });
-            surface.tui.styles.set("chat.meta", { dim: true });
+            surface.tui.styles.set({
+              "chat.title": { fg: "accent", bold: true },
+              "chat.hint": { fg: "accent" },
+              "chat.meta": { dim: true },
+            });
             const get = <K extends keyof Services & string>(name: K): ServiceOf<K> =>
               name === "tui" ? (surface.tui as ServiceOf<K>) : ctx.get(name);
             return apply({ ...ctx, get } satisfies PluginContext);

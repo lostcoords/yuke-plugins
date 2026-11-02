@@ -1,11 +1,13 @@
 import type { Rect, Size, Tui, View } from "yuke:tui";
 
 export function installStyles(tui: Tui): void {
-  tui.styles.set("btw.panel", { fg: "fg", bg: "bg" });
-  tui.styles.set("btw.title", { link: "chat.title" });
-  tui.styles.set("btw.question", { link: "chat.meta" });
-  tui.styles.set("btw.working", { link: "chat.hint" });
-  tui.styles.set("btw.hint", { link: "chat.meta" });
+  tui.styles.set({
+    "btw.panel": { fg: "fg", bg: "bg" },
+    "btw.title": { link: "chat.title" },
+    "btw.question": { link: "chat.meta" },
+    "btw.working": { link: "chat.hint" },
+    "btw.hint": { link: "chat.meta" },
+  });
 }
 
 /** Blank the narrow gutters so fragments of the live main chat cannot show through. */

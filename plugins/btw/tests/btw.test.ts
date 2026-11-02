@@ -1,5 +1,5 @@
 import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
-import { assert, createFrame, createHost, equal, rejects, reply, test } from "yuke:test";
+import { assert, createFrame, createHost, equal, type FrameTest, rejects, reply, test } from "yuke:test";
 import { TextEditor, type Tui } from "yuke:tui";
 import { apply, session as setup } from "../src/index.ts";
 import { ask } from "../src/requests.ts";
@@ -9,6 +9,17 @@ async function waitFor(done: () => boolean): Promise<void> {
     if (attempt === 200) throw new Error("The expected state did not arrive.");
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
+}
+
+/** Draw until the screen holds `text`, and give the screen. */
+async function screenWith(frame: FrameTest, text: string): Promise<string> {
+  let screen = "";
+  await waitFor(() => {
+    frame.draw();
+    screen = frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n");
+    return screen.includes(text);
+  });
+  return screen;
 }
 
 const plugin = { name: "btw", session: setup };
@@ -210,6 +221,7 @@ for (const width of [32, 100]) {
               session: () => shown,
               show: async () => {},
               onChange: () => () => {},
+              addRows: () => () => {},
             });
           },
         },
@@ -320,10 +332,8 @@ for (const width of [32, 100]) {
     );
     frame.paste("my next draft");
     await waitFor(() => host.requests.length === 2);
-    // Request completion and the overlay's promise continuation run on the next jobs.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    frame.draw();
-    const screen = frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n");
+    // Request completion and the overlay's promise continuation run on later jobs.
+    const screen = await screenWith(frame, "A side answer.");
     assert(screen.includes("/btw my side question"), screen);
     const questionRow = frame.frame.cells.find((row) =>
       row
@@ -382,9 +392,11 @@ for (const width of [32, 100]) {
 /** Supply a real frame terminal to the otherwise headless test host. */
 function withTerminal(ctx: PluginContext, tui: Tui): PluginContext {
   // The fake chat service omits the style registrations supplied by Yuke's bundled chat.
-  tui.styles.set("chat.title", { fg: "accent", bold: true });
-  tui.styles.set("chat.hint", { fg: "accent" });
-  tui.styles.set("chat.meta", { dim: true });
+  tui.styles.set({
+    "chat.title": { fg: "accent", bold: true },
+    "chat.hint": { fg: "accent" },
+    "chat.meta": { dim: true },
+  });
   const get = <K extends keyof Services & string>(name: K): ServiceOf<K> => {
     if (name === "tui") return tui as ServiceOf<K>;
     return ctx.get(name);
@@ -414,6 +426,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
               session: () => shown,
               show: async () => {},
               onChange: () => () => {},
+              addRows: () => () => {},
             });
           },
         },
@@ -452,10 +465,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
       frame.key("enter");
     }
     await waitFor(() => host.requests.length === 2);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    frame.draw();
-    const screen = frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n");
-    assert(screen.includes("Answer to the side question."), screen);
+    const screen = await screenWith(frame, "Answer to the side question.");
     equal(submissions, ["ordinary main message"]);
     equal(main.transcript.state, "running");
     equal(main.transcript.pending.size, 0);
@@ -488,6 +498,7 @@ test("the installed manifest loads against Yuke's plugin loader", async () => {
             session: () => undefined,
             show: async () => {},
             onChange: () => () => {},
+            addRows: () => () => {},
           });
         },
       },
@@ -571,7 +582,12 @@ for (const outcome of ["error", "cancel"]) {
           name: "chat",
           provides: ["chat"],
           apply: (ctx) => {
-            ctx.provide("chat", { session: () => shown, show: async () => {}, onChange: () => () => {} });
+            ctx.provide("chat", {
+              session: () => shown,
+              show: async () => {},
+              onChange: () => () => {},
+              addRows: () => () => {},
+            });
           },
         },
         {

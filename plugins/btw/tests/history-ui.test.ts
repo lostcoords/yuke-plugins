@@ -18,9 +18,11 @@ function screen(frame: FrameTest): string {
 
 async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
   const surface = frame.surface("btw");
-  surface.tui.styles.set("chat.title", { fg: "accent", bold: true });
-  surface.tui.styles.set("chat.hint", { fg: "accent" });
-  surface.tui.styles.set("chat.meta", { dim: true });
+  surface.tui.styles.set({
+    "chat.title": { fg: "accent", bold: true },
+    "chat.hint": { fg: "accent" },
+    "chat.meta": { dim: true },
+  });
   let shown: string | undefined;
   let dataDir: string | undefined;
   const host = await createHost({
@@ -29,7 +31,12 @@ async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
         name: "chat",
         provides: ["chat"],
         apply: (ctx) => {
-          ctx.provide("chat", { session: () => shown, show: async () => {}, onChange: () => () => {} });
+          ctx.provide("chat", {
+            session: () => shown,
+            show: async () => {},
+            onChange: () => () => {},
+            addRows: () => () => {},
+          });
         },
       },
       {
@@ -161,8 +168,7 @@ test("history search finds answer text and can browse other sessions without a m
   );
   assert(selectedRow !== undefined);
   const selectedCell = selectedRow.find((cell) => cell.text === "e");
-  equal(selectedCell?.style.bg, undefined);
-  equal(selectedCell?.style.reverse, true, "Native selection highlighting stays visible on the panel.");
+  assert(selectedCell?.style.bg !== undefined, "Native selection highlighting stays visible on the panel.");
   assert(!screen(frame).includes("different question"));
   frame.key("tab");
   await waitFor(() => screen(frame).includes("different question"));
@@ -296,8 +302,10 @@ test("flat presentation preserves Markdown highlights and copying the original a
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame);
   await using host = loaded.host;
-  loaded.tui.styles.set("markdown.strong", { bold: true });
-  loaded.tui.styles.set("markdown.code", { fg: "warn" });
+  loaded.tui.styles.set({
+    "markdown.strong": { bold: true },
+    "markdown.code": { fg: "warn" },
+  });
   const answer = "Use **bold** and `inline`.";
   await loaded.history.save({ ...record, answer, sessionId: loaded.main.id });
   loaded.tui.commands.run("btw:ask");
