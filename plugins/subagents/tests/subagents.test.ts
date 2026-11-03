@@ -1,8 +1,10 @@
 // The tools of the plugin on a test host: reports, follow-ups, stops, moves, questions, and the prompt of a subagent.
 
+import { mkdir, readTextFile, writeTextFile } from "yuke:fs";
 import type { PluginApply, PluginSession, QuestionAnswer, SessionContext, Sessions } from "yuke:plugins";
 import { createHost, equal, type Reply, reply, settled, test } from "yuke:test";
 import { apply, session } from "../src/index.ts";
+import type { LoggedRun } from "../src/run-log.ts";
 
 const SPAWN = { description: "Read the store", message: "Read the store.", background: true };
 
@@ -14,6 +16,10 @@ interface Options {
   readonly failChild?: boolean;
   /** Takes the questions that the plugin asks in the parent. */
   readonly ask?: SessionContext["ask"];
+  /** Takes the notices of the plugin. */
+  readonly notice?: (text: string) => void;
+  /** The runs that an earlier process left in the log of the next parent. */
+  readonly runs?: readonly LoggedRun[];
 }
 
 /** A host with the plugin and `replies`, and an open parent session. The tool `gate` waits for `openGate`. */
@@ -22,7 +28,9 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   const gate = Promise.withResolvers<void>();
   // The plugin waits for this promise before each open. A test replaces it to hold the start of a job.
   const opening = { wait: Promise.resolve() };
+  let dataDirectory = "";
   const pluginApply: PluginApply = (ctx) => {
+    dataDirectory = ctx.dataDir;
     const real = ctx.get("sessions");
     sessions = real;
     const open: Sessions["open"] = async (id, options) => {
@@ -34,7 +42,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
       get: (name: string) => (name === "sessions" ? { ...real, open } : ctx.get(name as never)),
     } as never);
   };
-  const pluginSession: PluginSession = (s) => {
+  const pluginSession: PluginSession = async (s) => {
     if (options.failChild === true && s.parent !== undefined) {
       s.hook("prompt.build", () => {
         throw new Error("the hook failed");
@@ -64,7 +72,16 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
           ),
         ),
     });
-    return session(options.ask === undefined ? s : Object.create(s, { ask: { value: options.ask } }));
+    if (s.parent === undefined && options.runs !== undefined) {
+      await mkdir(`${dataDirectory}/running`, { recursive: true });
+      await writeTextFile(`${s.sessionId}.json`, JSON.stringify(options.runs), { baseDir: `${dataDirectory}/running` });
+    }
+    const notify = options.notice;
+    const overrides = {
+      ...(options.ask === undefined ? {} : { ask: { value: options.ask } }),
+      ...(notify === undefined ? {} : { notify: { value: (_level: string, text: string) => notify(text) } }),
+    };
+    return session(Object.create(s, overrides));
   };
   const host = await createHost({
     plugins: [{ name: "subagents", apply: pluginApply, session: pluginSession }],
@@ -74,7 +91,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   const parent = await host.openSession();
   const list = sessions as unknown as Sessions;
   const handle = await list.open(parent.id, { tail: 0, event() {} });
-  return { host, parent, list, handle, openGate: gate.resolve, opening };
+  return { host, parent, list, handle, openGate: gate.resolve, opening, dataDir: () => dataDirectory };
 }
 
 type Opened = Awaited<ReturnType<typeof opened>>;
@@ -360,6 +377,73 @@ test("two parallel spawns create two subagents", async () => {
   await settled();
 
   equal((await list.list({ parent: parent.id })).sessions.length, 2);
+});
+
+/** The running subagents that the log file of `parent` holds. */
+async function logged(dataDir: string, parent: string): Promise<readonly string[]> {
+  try {
+    const text = await readTextFile(`${parent}.json`, { baseDir: `${dataDir}/running` });
+    return (JSON.parse(text) as { readonly id: string }[]).map((run) => run.id);
+  } catch {
+    return [];
+  }
+}
+
+test("a subagent that ends or stops leaves the log, and a close of the parent keeps it there", async () => {
+  const state = await opened([reply.stall("One"), reply.text("Two."), reply.text("Thanks."), reply.stall("Three")]);
+  const { host, parent, list, dataDir } = state;
+  await using _host = host;
+
+  await parent.call("spawn_subagent", SPAWN);
+  await settled();
+  const first = await childOf(state);
+  const running = await logged(dataDir(), parent.id);
+  await parent.call("stop", { id: first });
+  await settled();
+  const stopped = await logged(dataDir(), parent.id);
+  await parent.call("message_subagent", { id: first, message: "Again.", background: true });
+  await settled();
+  const ended = await logged(dataDir(), parent.id);
+  await parent.call("message_subagent", { id: first, message: "Once more.", background: true });
+  await settled();
+  await list.close(parent.id);
+  await settled();
+
+  equal([running, stopped, ended], [[first], [], []]);
+  equal(await logged(dataDir(), parent.id), [first]);
+});
+
+test("a run from an earlier process gives a notice now, and the model reads it once with the next input", async () => {
+  const notices: string[] = [];
+  const state = await opened([reply.text("I see."), reply.text("Fine.")], {
+    notice: (text) => notices.push(text),
+    runs: [{ id: "lost-1", label: "Read the store" }],
+  });
+  const { host, parent } = state;
+  await using _host = host;
+
+  await parent.send("What happened?");
+  await settled();
+  const told = host.requests[0]?.messages.at(-1)?.text ?? "";
+  await parent.send("And now?");
+  await settled();
+
+  equal(notices, ["Read the store · interrupted"]);
+  equal(told.includes("Subagent lost-1 (Read the store) stopped when yuke closed"), true);
+  equal(told.includes("What happened?"), true);
+  equal(host.requests[1]?.messages.at(-1)?.text, "And now?");
+});
+
+test("a damaged log gives one notice, and the file goes", async () => {
+  const notices: string[] = [];
+  const state = await opened([], { notice: (text) => notices.push(text), runs: {} as never });
+  const { host, parent, dataDir } = state;
+  await using _host = host;
+  await settled();
+
+  equal(notices.length, 1);
+  equal(notices[0]?.includes("not a list"), true);
+  equal(await logged(dataDir(), parent.id), []);
 });
 
 test("a subagent gets the prompt section and no subagent tools, and the parent gets the tools and no section", async () => {

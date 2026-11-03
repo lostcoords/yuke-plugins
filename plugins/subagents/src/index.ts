@@ -4,6 +4,7 @@ import type { ToolContext, ToolResult } from "yuke:tools";
 import type { Tui } from "yuke:tui";
 import type { ListEntry } from "./list.ts";
 import { ModelList, modelId, resolveModel } from "./models.ts";
+import { type LoggedRun, RunLog } from "./run-log.ts";
 import { installUi } from "./ui.ts";
 
 const SPAWN_DESCRIPTION = `Start a subagent: a new agent with its own context, the same tools, and the same folder as you. It cannot start subagents.
@@ -74,9 +75,13 @@ let redraw = (): void => {};
 /** The list of models that the user chose. */
 let models: ModelList;
 
+/** The runs that a later process must see. */
+let log: RunLog;
+
 export function apply(ctx: PluginContext): undefined {
   sessions = ctx.get("sessions");
   models = new ModelList(ctx.dataDir, ctx.get("catalog"));
+  log = new RunLog(ctx.dataDir);
   tui = ctx.get("tui");
   if (tui === undefined) return;
   redraw = installUi(ctx, tui, models, {
@@ -108,6 +113,7 @@ export async function session(s: SessionContext): Promise<undefined> {
   }
   // The tool text is fixed for the session, so the prompt cache holds. A new list reaches the next session.
   const ids = await readyIds(s);
+  await tellInterrupted(s);
   const running = new Map<SessionId, Running>();
   runs.set(s.sessionId, running);
   s.signal.addEventListener("abort", () => {
@@ -169,6 +175,37 @@ export async function session(s: SessionContext): Promise<undefined> {
         display: [{ kind: "markdown", text: "Message sent" }],
       };
     },
+  });
+}
+
+/**
+ * Tell about the subagents of this session that an earlier process left running: the user now, and the model with the
+ * next input. A wake of the model would spend tokens when the user only opens an old session.
+ */
+async function tellInterrupted(s: SessionContext): Promise<void> {
+  let lost: readonly LoggedRun[];
+  try {
+    lost = await log.read(s.sessionId);
+  } catch (error) {
+    // A kill during a write can damage the file. The file goes, so the next open does not repeat this error.
+    s.notify("error", `the running subagents did not load: ${String(error)}`);
+    await log.clear(s.sessionId);
+    return;
+  }
+  if (lost.length === 0) return;
+  for (const run of lost) s.notify("warn", `${run.label} · interrupted`);
+  const remove = s.hook("input.before", async (event) => {
+    remove();
+    await log.remove(
+      s.sessionId,
+      lost.map((run) => run.id),
+    );
+    const lines = lost.map(
+      (run) =>
+        `Subagent ${run.id} (${run.label}) stopped when yuke closed, and it has no report. Use message_subagent to continue it, or start the work again.`,
+    );
+    const text = `<system_notification plugin="subagents">${lines.join("\n")}</system_notification>`;
+    return { replace: { blocks: [{ user_text: text }, ...event.blocks] } };
   });
 }
 
@@ -295,6 +332,7 @@ async function work(
       started: tui?.now() ?? 0,
     };
     running.set(id, active);
+    await log.add(s.sessionId, { id, label });
     redraw();
     // A stop can come during the waits above, and an abort event does not fire again.
     if (signal.aborted) void stop(active);
@@ -305,6 +343,8 @@ async function work(
     running.delete(id);
     redraw();
     ended.abort();
+    // A close or a reload leaves the run in the log, so the next process tells about it. A crash also leaves it.
+    if (!s.signal.aborted) await log.remove(s.sessionId, [id]);
   }
 }
 

@@ -24,6 +24,8 @@ In the terminal, the running subagents show under the composer. Press Down on th
 
 A subagent uses the session model. To choose others, run `subagents:models`: `a` adds a model and its reasoning level, `d` removes it, Enter makes it the default, and `R` reloads. The agent can then pick from that list with the `model` argument of `spawn_subagent`. The list is in `settings.json` in the data folder of the plugin, so a client of `yuke --rpc` edits that file. A changed list reaches new sessions. It cannot start subagents. Its questions go to the user of its parent.
 
+A crash, a quit, or a reload stops a running subagent. When the parent session opens again, a notice names the subagent, and the agent reads it with the next message. Nothing resumes by itself.
+
 The tools work in the terminal, in `yuke --rpc`, and in `yuke -p`. A background subagent does not run in `yuke -p`.
 
 ## Tests

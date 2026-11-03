@@ -326,6 +326,58 @@ def stop_flow(client, model, cwd):
     client.call('session/close', {'sessionId': parent})
 
 
+def restart_flow(env, work, model):
+    """A kill of yuke during a run: the next process tells the user at the load, and the model with the next input."""
+    first = Client(env, work)
+    first.call('initialize', {'protocolVersion': 1, 'clientInfo': {'name': 'rpc.py', 'version': '0'}})
+    parent = new_parent(first, work)
+    model.release.clear()
+    model.parent.extend([call('spawn_subagent', SPAWN), text('Started.')])
+    model.child.append({'stall': True})
+    send(first, parent, 'Read the store.')
+    item = update_of(first.until('a running job', job(parent, 'running')))['job']
+    first.until('the parent idle', idle(parent))
+    deadline = time.monotonic() + WAIT
+    logged = Path(env['XDG_DATA_HOME']) / f'yuke/plugins/subagents/running/{parent}.json'
+    while not logged.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    first.process.kill()
+    first.process.wait(WAIT)
+    model.release.set()
+
+    second = Client(env, work)
+    try:
+        second.call('initialize', {'protocolVersion': 1, 'clientInfo': {'name': 'rpc.py', 'version': '0'}})
+        second.call('session/load', {'sessionId': parent})
+        notice = second.until(
+            'the notice of the interrupted subagent',
+            lambda message: message.get('method') == 'notice' and 'interrupted' in json.dumps(message),
+        )
+        assert notice['params']['message'] == 'Read the store · interrupted', notice
+        assert model.requests[-1:] and 'stopped when yuke closed' not in json.dumps(model.requests[-1]['messages'][-1])
+        before = len(model.requests)
+        model.parent.extend([text('I see.'), text('Noted again.')])
+        send(second, parent, 'What happened?')
+        second.until('the parent runs', activity(parent, 'running'))
+        second.until('the parent idle', idle(parent))
+        told = json.dumps(model.requests[before]['messages'])
+        assert f'Subagent {item["id"]} (Read the store) stopped when yuke closed' in told, told
+        assert 'What happened?' in told, told
+        # The model hears it once.
+        send(second, parent, 'And now?')
+        second.until('the parent runs', activity(parent, 'running'))
+        second.until('the parent idle', idle(parent))
+        last = json.dumps(model.requests[-1]['messages'][-1])
+        assert 'stopped when yuke closed' not in last, last
+        assert not logged.exists(), logged
+    finally:
+        second.process.stdin.close()
+        try:
+            second.process.wait(WAIT)
+        except subprocess.TimeoutExpired:
+            second.process.kill()
+
+
 def main():
     model = Model()
     with tempfile.TemporaryDirectory(prefix='yuke-subagents-rpc-') as root:
@@ -387,6 +439,9 @@ def main():
                 flow(client, model, work)
                 assert not model.errors, model.errors
                 print(f'ok {flow.__name__}')
+            restart_flow(env, work, model)
+            assert not model.errors, model.errors
+            print('ok restart_flow')
         finally:
             client.process.stdin.close()
             try:
