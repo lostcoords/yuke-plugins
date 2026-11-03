@@ -7,6 +7,7 @@ Small, independent plugins for [Yuke](https://github.com/lostcoords/yuke).
 | Plugin | Description |
 | --- | --- |
 | [btw](plugins/btw) | Parallel side questions without changing the main conversation. |
+| [subagents](plugins/subagents) | New agents with their own context that report to the agent. |
 
 ## Installation
 
@@ -24,6 +25,7 @@ From a checkout of this repository:
 
 ```sh
 yuke test plugins/btw/tests
+yuke test plugins/subagents/tests
 ```
 
 ## License
