@@ -221,7 +221,8 @@ for (const width of [32, 100]) {
               session: () => shown,
               show: async () => {},
               onChange: () => () => {},
-              addRows: () => () => {},
+              addComposerRows: () => () => {},
+              present: () => () => {},
             });
           },
         },
@@ -426,7 +427,8 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
               session: () => shown,
               show: async () => {},
               onChange: () => () => {},
-              addRows: () => () => {},
+              addComposerRows: () => () => {},
+              present: () => () => {},
             });
           },
         },
@@ -498,7 +500,8 @@ test("the installed manifest loads against Yuke's plugin loader", async () => {
             session: () => undefined,
             show: async () => {},
             onChange: () => () => {},
-            addRows: () => () => {},
+            addComposerRows: () => () => {},
+            present: () => () => {},
           });
         },
       },
@@ -586,7 +589,8 @@ for (const outcome of ["error", "cancel"]) {
               session: () => shown,
               show: async () => {},
               onChange: () => () => {},
-              addRows: () => () => {},
+              addComposerRows: () => () => {},
+              present: () => () => {},
             });
           },
         },
