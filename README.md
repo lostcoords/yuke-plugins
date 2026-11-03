@@ -27,6 +27,7 @@ From a checkout of this repository:
 ```sh
 yuke test plugins/btw/tests
 yuke test plugins/subagents/tests
+yuke test plugins/vim/tests
 ```
 
 ## License

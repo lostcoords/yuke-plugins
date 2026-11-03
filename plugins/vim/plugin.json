@@ -1,0 +1,10 @@
+{
+  "name": "vim",
+  "version": "0.1.0",
+  "description": "Vim editing through public Yuke text widget APIs.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts"
+    }
+  }
+}
