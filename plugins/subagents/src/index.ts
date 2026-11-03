@@ -1,8 +1,9 @@
-import type { JobReport, PluginContext, SessionContext, SessionHandle, Sessions } from "yuke:plugins";
-import type { InputId, SessionId } from "yuke:protocol";
+import type { JobReport, PluginContext, SessionContext, SessionHandle, SessionRow, Sessions } from "yuke:plugins";
+import type { InputId, SessionId, SessionSettings } from "yuke:protocol";
 import type { ToolContext, ToolResult } from "yuke:tools";
 import type { Tui } from "yuke:tui";
 import type { ListEntry } from "./list.ts";
+import { ModelList, modelId, resolveModel } from "./models.ts";
 import { installUi } from "./ui.ts";
 
 const SPAWN_DESCRIPTION = `Start a subagent: a new agent with its own context, the same tools, and the same folder as you. It cannot start subagents.
@@ -70,11 +71,15 @@ const busy = new Set<SessionId>();
 /** Draw the interface again. */
 let redraw = (): void => {};
 
+/** The list of models that the user chose. */
+let models: ModelList;
+
 export function apply(ctx: PluginContext): undefined {
   sessions = ctx.get("sessions");
+  models = new ModelList(ctx.dataDir, ctx.get("catalog"));
   tui = ctx.get("tui");
   if (tui === undefined) return;
-  redraw = installUi(ctx, tui, {
+  redraw = installUi(ctx, tui, models, {
     running: (parent) =>
       [...(runs.get(parent)?.entries() ?? [])].map(([id, run]) => ({
         id,
@@ -94,13 +99,15 @@ export function apply(ctx: PluginContext): undefined {
   });
 }
 
-export function session(s: SessionContext): undefined {
+export async function session(s: SessionContext): Promise<undefined> {
   if (s.parent !== undefined) {
     // A pane can open a subagent of an earlier process, which has no label here.
     if (!subagents.has(s.sessionId)) subagents.set(s.sessionId, { parent: s.parent, label: undefined });
     s.hook("prompt.build", (event) => ({ sections: { ...event.sections, subagent: SUBAGENT_PROMPT } }));
     return;
   }
+  // The tool text is fixed for the session, so the prompt cache holds. A new list reaches the next session.
+  const ids = await readyIds(s);
   const running = new Map<SessionId, Running>();
   runs.set(s.sessionId, running);
   s.signal.addEventListener("abort", () => {
@@ -118,13 +125,17 @@ export function session(s: SessionContext): undefined {
         description: { type: "string", description: "A label of 3 to 5 words for the user." },
         message: { type: "string", description: "The brief of the subagent." },
         background: { type: "boolean", description: BACKGROUND_DESCRIPTION },
+        ...(ids.length === 0
+          ? {}
+          : { model: { type: "string", enum: ids, description: "Omit it to use the default of the user." } as const }),
       },
       required: ["description", "message", "background"],
     },
     hints: { subject: { argument: "description", kind: "text" } },
     async execute(args, context) {
-      const id = await sessions.create(s.settings, { parent: s.sessionId });
-      return run(s, context, running, id, args.description, args.message, args.background);
+      const settings = await settingsOf(s, (args as { readonly model?: string }).model);
+      const id = await sessions.create(settings, { parent: s.sessionId });
+      return run(s, context, running, id, args.description, args.message, args.background, settings.model.model);
     },
   });
 
@@ -143,27 +154,62 @@ export function session(s: SessionContext): undefined {
     },
     hints: { subject: { argument: "message", kind: "text" } },
     async execute(args, context) {
-      if ((await parentOf(args.id)) !== s.sessionId) {
+      const row = await rowOf(args.id);
+      if (row?.session.parent !== s.sessionId) {
         throw new Error(`The id ${args.id} names no subagent of this session.`);
       }
       const active = running.get(args.id);
-      if (active === undefined) return run(s, context, running, args.id, args.message, args.message, args.background);
+      if (active === undefined) {
+        const model = row.session.model.model;
+        return run(s, context, running, args.id, args.message, args.message, args.background, model);
+      }
       active.inputs.push(await active.handle.input([{ user_text: args.message }]));
       return {
-        text: `${args.id} still runs and has the message. ${WAIT_RULE}`,
+        text: `Subagent ${args.id} still runs and has the message. ${WAIT_RULE}`,
         display: [{ kind: "markdown", text: "Message sent" }],
       };
     },
   });
 }
 
-/** The parent of the session `id`, or `undefined` when no session has that id, also for a malformed id. */
-async function parentOf(id: string): Promise<SessionId | null | undefined> {
+/** The row of the session `id`, or `undefined` when no session has that id, also for a malformed id. */
+async function rowOf(id: string): Promise<SessionRow | undefined> {
   try {
-    return (await sessions.get(id)).session.parent;
+    return await sessions.get(id);
   } catch {
     return undefined;
   }
+}
+
+/** The ids of the saved models with a ready provider. A broken file gives a notice and no `model` argument. */
+async function readyIds(s: SessionContext): Promise<string[]> {
+  try {
+    const providers = await models.providers();
+    const saved = await models.read();
+    return saved.models.filter((entry) => resolveModel(entry, providers) !== undefined).map(modelId);
+  } catch (error) {
+    s.notify("error", `the subagent models did not load: ${String(error)}`);
+    return [];
+  }
+}
+
+/** The settings of a new subagent: the model `chosen`, else the default of the user, else the session model. */
+async function settingsOf(s: SessionContext, chosen: string | undefined): Promise<SessionSettings> {
+  const saved = await models.read();
+  const id = chosen ?? saved.default;
+  if (id === undefined) return s.settings;
+  const entry = saved.models.find((candidate) => modelId(candidate) === id);
+  const resolved = entry === undefined ? undefined : resolveModel(entry, await models.providers());
+  if (resolved === undefined) {
+    throw new Error(
+      `The subagent model ${id} is not available. Ask the user to change the list with subagents:models.`,
+    );
+  }
+  return {
+    model: resolved.model,
+    settings: { ...s.settings.settings, reasoning: resolved.reasoning },
+    cwd: s.settings.cwd,
+  };
 }
 
 /** Run the turn of the subagent `id` for `message` as a job, and give the result of the call. */
@@ -175,10 +221,11 @@ async function run(
   label: string,
   message: string,
   background: boolean,
+  model: string,
 ): Promise<ToolResult> {
   subagents.set(id, { parent: s.sessionId, label });
   const job = { id, label, background };
-  const outcome = await context.jobs.run(job, (signal) => work(s, running, id, label, message, signal));
+  const outcome = await context.jobs.run(job, (signal) => work(s, running, id, label, model, message, signal));
   if (outcome.kind === "background") {
     return {
       text: `Subagent ${id} runs in the background. ${WAIT_RULE}\n${LEAVE_RULE}`,
@@ -200,6 +247,7 @@ async function work(
   running: Map<SessionId, Running>,
   id: SessionId,
   label: string,
+  model: string,
   message: string,
   signal: AbortSignal,
 ): Promise<JobReport> {
@@ -243,7 +291,7 @@ async function work(
       parent,
       inputs: [await handle.input([{ user_text: message }])],
       label,
-      model: s.settings.model.model,
+      model,
       started: tui?.now() ?? 0,
     };
     running.set(id, active);

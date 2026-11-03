@@ -3,6 +3,8 @@ import type { PluginContext } from "yuke:plugins";
 import type { SessionId } from "yuke:protocol";
 import { type KeyEvent, strokeOf, type TextEditor, type Tui } from "yuke:tui";
 import { type ListEntry, listRows, SHOWN } from "./list.ts";
+import { openModelDialog } from "./model-dialog.ts";
+import type { ModelList } from "./models.ts";
 
 /** A running subagent, as the terminal interface needs it. */
 export interface ListedRun extends ListEntry {
@@ -26,7 +28,7 @@ export interface UiSource {
 const HINT = "↓↑ move · enter open · x stop · esc back";
 
 /** Show the list in a chat pane, its selection, and the view of a subagent. Return the function that draws them again. */
-export function installUi(ctx: PluginContext, tui: Tui, source: UiSource): () => void {
+export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, source: UiSource): () => void {
   const chat: ChatService = ctx.get("chat");
   let selected: { readonly parent: SessionId; index: number } | undefined;
   let tick: (() => void) | undefined;
@@ -51,6 +53,15 @@ export function installUi(ctx: PluginContext, tui: Tui, source: UiSource): () =>
   };
 
   chat.setReadOnly(source.readOnly);
+
+  tui.commands.add({
+    name: "models",
+    description: "Choose the models of subagents",
+    run: async () => {
+      const fail = (text: string): void => ctx.notify("error", text);
+      await openModelDialog(tui, models, fail).catch((error: unknown) => fail(String(error)));
+    },
+  });
 
   // A selection belongs to its pane, so a key in another pane never acts on it.
   tui.onFocus(() => {

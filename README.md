@@ -8,6 +8,7 @@ Small, independent plugins for [Yuke](https://github.com/lostcoords/yuke).
 | --- | --- |
 | [btw](plugins/btw) | Parallel side questions without changing the main conversation. |
 | [subagents](plugins/subagents) | New agents with their own context that report to the agent. |
+| [vim](plugins/vim) | Vim composer editing through public text widget APIs. |
 
 ## Installation
 

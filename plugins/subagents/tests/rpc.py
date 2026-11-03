@@ -255,6 +255,9 @@ def background_flow(client, model, cwd):
     client.until('the parent idle', idle(parent))
     assert 'Three indexes.' in update_of(second)['input']['modelContent'][0]['user_text'], second
     assert children(client, parent) == [item['id']]
+    # The default of settings.json gives the subagent the model `big`, and the parent keeps `small`.
+    used = {('child' if 'You are a subagent working' in json.dumps(body.get('system')) else 'parent', body['model']) for body in model.requests}
+    assert used == {('child', 'big'), ('parent', 'small')}, used
     client.call('session/close', {'sessionId': item['id']})
     client.call('session/close', {'sessionId': parent})
 
@@ -349,12 +352,23 @@ def main():
                                     'id': 'small',
                                     'flags': {'supports_cache_breakpoint': True},
                                     'limits': {'context_window': 64000, 'max_output_tokens': 4096},
-                                }
+                                },
+                                {
+                                    'id': 'big',
+                                    'flags': {'supports_cache_breakpoint': True},
+                                    'limits': {'context_window': 64000, 'max_output_tokens': 4096},
+                                },
                             ],
                         }
                     ]
                 }
             )
+        )
+        # A client of `yuke --rpc` has no dialog, so it edits this file.
+        data = root / 'data/yuke/plugins/subagents'
+        data.mkdir(parents=True)
+        (data / 'settings.json').write_text(
+            json.dumps({'default': 'local/big:default', 'models': [{'model': 'local/big', 'reasoning': 'default'}]})
         )
         env = dict(
             os.environ,
