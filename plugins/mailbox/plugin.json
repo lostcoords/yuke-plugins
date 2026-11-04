@@ -1,0 +1,10 @@
+{
+  "name": "mailbox",
+  "version": "0.1.0",
+  "description": "Direct messages between open Yuke sessions on the same machine.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts"
+    }
+  }
+}
