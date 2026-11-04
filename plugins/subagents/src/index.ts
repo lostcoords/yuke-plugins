@@ -15,6 +15,7 @@ Do not use it for:
 - A task that takes a handful of tool calls: a few reads, one search, a short edit, a single check.
 - A check of work that you can verify yourself.
 - One modest task split into parts.
+- A modest research question, even across several sources.
 
 Brief it like a smart colleague who has not seen this conversation:
 - Explain the goal and why it matters.
@@ -373,5 +374,10 @@ async function reportOf(id: SessionId, before: number): Promise<JobReport> {
   );
   const text = texts.findLast((candidate) => candidate !== "") ?? "";
   if (failure !== undefined) return { status: "failed", text: text === "" ? failure : `${failure}\n${text}` };
+  // A stop drops this report, so it reaches the parent only after a cancel with no stop. A quit can do that.
+  if (end !== null && end !== undefined && "outcome" in end && end.outcome === "cancelled") {
+    const note = "A cancel ended the subagent before it finished.";
+    return { status: "cancelled", text: text === "" ? note : `${note}\n${text}` };
+  }
   return { status: "completed", text: text === "" ? "The subagent ended without a final message." : text };
 }

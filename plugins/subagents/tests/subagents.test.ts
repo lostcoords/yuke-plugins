@@ -299,6 +299,23 @@ test("a turn without a final message reports that, and not the message of an old
   equal(newest(host), notification(id, "The subagent ended without a final message.", "completed", "And the indexes?"));
 });
 
+test("a cancelled turn reports cancelled, not completed", async () => {
+  const state = await opened([reply.toolCall("gate", {}), reply.text("Thanks.")]);
+  const { host, parent, list } = state;
+  await using _host = host;
+
+  await parent.call("spawn_subagent", SPAWN);
+  await settled();
+  const id = await childOf(state);
+  const closed = new AbortController();
+  const child = await list.open(id, { tail: 0, signal: closed.signal, event() {} });
+  child.cancel();
+  await settled();
+  closed.abort();
+
+  equal(newest(host), notification(id, "A cancel ended the subagent before it finished.", "cancelled"));
+});
+
 test("a stop drops a message that waits, so no new turn starts", async () => {
   const state = await opened([reply.toolCall("gate", {})]);
   const { host, parent } = state;
@@ -363,17 +380,20 @@ test("two parallel spawns create two subagents", async () => {
     reply.toolCalls([
       { name: "spawn_subagent", args: SPAWN },
       { name: "spawn_subagent", args: SPAWN },
+      // The gate holds the parent until both reports arrive. One request then reads both, so the reply count stays fixed.
+      { name: "gate", args: {} },
     ]),
     reply.text("Two tables."),
     reply.text("Two tables."),
-    reply.text("Waiting."),
-    reply.text("Thanks."),
     reply.text("Thanks."),
   ]);
-  const { host, parent, list } = state;
+  const { host, parent, list, openGate } = state;
   await using _host = host;
 
-  await parent.send("Read the store.");
+  const sent = parent.send("Read the store.");
+  await settled();
+  openGate();
+  await sent;
   await settled();
 
   equal((await list.list({ parent: parent.id })).sessions.length, 2);
