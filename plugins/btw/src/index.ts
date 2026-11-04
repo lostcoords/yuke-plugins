@@ -1,5 +1,5 @@
 import type { PluginContext } from "yuke:plugins";
-import { strokeOf, type View } from "yuke:tui";
+import type { View } from "yuke:tui";
 
 import { History } from "./history.ts";
 import { browseHistory } from "./history-ui.ts";
@@ -30,14 +30,16 @@ export function apply(ctx: PluginContext): undefined {
 
   tui.commands.add({
     name: "ask",
+    slash: "btw",
+    argumentHint: "<question>",
     description: "Ask a parallel side question using the main round's cache",
-    run: () => {
-      start(tui.panes.active?.view);
-    },
+    // A question without a round keeps its draft.
+    run: (args) => (start(tui.panes.active?.view, typeof args === "string" ? args : "") ? undefined : false),
   });
 
   tui.commands.add({
     name: "history",
+    slash: "btw:history",
     description: "Browse saved side answers",
     run: () => {
       const pane = tui.panes.active?.view;
@@ -50,27 +52,4 @@ export function apply(ctx: PluginContext): undefined {
   });
 
   tui.keys.bind("ctrl+k b", "ask");
-
-  // Take /btw before the chat can queue it as main input, including during a running turn.
-  tui.widgets.watch((mount) => {
-    const editor = mount.widget;
-    if (editor.kind !== "editor" || editor.role !== "composer") return;
-
-    const extension = editor.extend(mount.signal);
-
-    extension.onKey((event) => {
-      if (strokeOf(event) !== "enter") return false;
-
-      const match = /^\/btw(?:\s+([\s\S]*))?$/.exec(editor.state.text);
-      if (match === null) return false;
-
-      if (start(mount.pane?.view, match[1]?.trim() ?? "")) {
-        editor.reset({ text: "", spans: [], selection: { anchor: 0, head: 0 } });
-      }
-
-      return true;
-    }, "beforeKeymap");
-
-    return () => extension.dispose();
-  });
 }

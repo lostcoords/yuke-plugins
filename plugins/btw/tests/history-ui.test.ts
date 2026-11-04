@@ -35,7 +35,7 @@ async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
             session: () => shown,
             show: async () => {},
             onChange: () => () => {},
-            addComposerRows: () => () => {},
+            addComposerView: () => () => {},
             present: () => () => {},
           });
         },

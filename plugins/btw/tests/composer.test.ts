@@ -17,7 +17,7 @@ for (const width of [32, 100]) {
               session: () => undefined,
               show: async () => {},
               onChange: () => () => {},
-              addComposerRows: () => () => {},
+              addComposerView: () => () => {},
               present: () => () => {},
             });
           },
