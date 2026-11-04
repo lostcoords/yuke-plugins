@@ -83,7 +83,7 @@ test("a search dialog closes when its composer leaves the tree", () => {
   using frame = fixture.frame;
   frame.key("esc alt+/");
   const replacement = new TextEditor({ role: "field" });
-  fixture.surface.tui.setRoot(() => replacement);
+  fixture.surface.tui.wrapRoot(() => replacement);
   frame.draw();
   equal(fixture.surface.tui.focused, replacement);
   frame.key("X");
