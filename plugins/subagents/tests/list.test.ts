@@ -1,9 +1,9 @@
 // The list of running subagents under the composer: its rows at each width, and its source on a test host.
 
-import type { ChatReadOnly, ChatService, ComposerRow, ComposerRowsContext } from "yuke:chat";
+import type { ChatPane, ChatReadOnly, ChatService, ComposerView } from "yuke:chat";
 import type { PluginContext, ServiceOf, Services, Sessions } from "yuke:plugins";
 import { createFrame, createHost, equal, type Reply, reply, settled, test } from "yuke:test";
-import { TextEditor } from "yuke:tui";
+import { type Canvas, type Mount, TextEditor } from "yuke:tui";
 import { apply, session as pluginSession } from "../src/index.ts";
 import { type ListEntry, listRows } from "../src/list.ts";
 
@@ -37,17 +37,23 @@ test("the time moves from seconds to minutes to hours", () => {
 });
 
 /** A frame with a composer in a pane, the plugin on a test host, and a fake chat service that shows that pane. */
+interface Row {
+  readonly text: string;
+  readonly style: unknown;
+}
+
 async function shown(replies: readonly Reply[]) {
   const frame = createFrame({ width: 60, height: 12 });
   const surface = frame.surface("subagents");
-  const below: ((pane: ComposerRowsContext) => readonly ComposerRow[])[] = [];
-  const above: ((pane: ComposerRowsContext) => readonly ComposerRow[])[] = [];
+  type Create = (mount: Mount, pane: ChatPane) => ComposerView;
+  const below: Create[] = [];
+  const above: Create[] = [];
   const showed: string[] = [];
   let readOnly: ((session: string) => ChatReadOnly | undefined) | undefined;
   let session: string | undefined;
   const chat = {
-    addComposerRows: (place: string, rows: (pane: ComposerRowsContext) => readonly ComposerRow[]) => {
-      (place === "below" ? below : above).push(rows);
+    addComposerView: (place: string, create: Create) => {
+      (place === "below" ? below : above).push(create);
       return () => {};
     },
     setReadOnly: (source: typeof readOnly) => {
@@ -84,8 +90,24 @@ async function shown(replies: readonly Reply[]) {
   session = parent.id;
   const held = await (sessions as unknown as Sessions).open(parent.id, { tail: 0, event() {} });
   frame.start();
-  const rowsOf = (id: string | undefined) => below[0]?.({ session: id as never, width: 60 }) ?? [];
-  const waiting = (id: string | undefined) => above[0]?.({ session: id as never, width: 60 }).map((row) => row.text);
+  /** The rows that the view of `create` draws for a pane on the session `id`, with `height` rows or all it wants. */
+  const drawn = (create: Create | undefined, id: string | undefined, height?: number) => {
+    const rows: Row[] = [];
+    const mount = { signal: new AbortController().signal, close() {} };
+    const view = create?.(mount, { session: id as never, view: composer, running: false, transcript: {} as never });
+    const canvas = {
+      width: 60,
+      height: height ?? view?.heightFor(60) ?? 0,
+      text: (_column: number, row: number, text: string, style?: unknown) => {
+        rows[row] = { text, style };
+        return 0;
+      },
+    } as unknown as Canvas;
+    view?.draw(canvas, false);
+    return rows;
+  };
+  const rowsOf = (id: string | undefined, height?: number) => drawn(below[0], id, height);
+  const waiting = (id: string | undefined) => drawn(above[0], id).map((row) => row.text);
   const children = async () =>
     (await (sessions as unknown as Sessions).list({ parent: parent.id })).sessions.map((row) => row.session.sessionId);
   return {
@@ -100,12 +122,15 @@ async function shown(replies: readonly Reply[]) {
     showed,
     children,
     readOnly: () => readOnly,
+    show: (id: string) => {
+      session = id;
+    },
     sessions: () => sessions as unknown as Sessions,
   };
 }
 
 const SPAWN = { description: "Read the store", message: "Read.", background: true };
-const bold = (rows: readonly ComposerRow[]) =>
+const bold = (rows: readonly Row[]) =>
   rows.map((row) => (row.style as { readonly bold?: boolean } | undefined)?.bold === true);
 
 test("the list shows a running subagent to the pane of its parent, and the row goes at its end", async () => {
@@ -136,6 +161,36 @@ test("the waiting row shows while the parent is idle and a subagent runs", async
   await state.parent.call("stop", { id: child });
   await settled();
   equal(state.waiting(state.parent.id), []);
+});
+
+test("a short place scrolls to the selected row, so a key never acts on a hidden row", async () => {
+  const state = await shown([reply.stall("One"), reply.stall("Two")]);
+  using _frame = state.frame;
+  await using _host = state.host;
+  await state.parent.call("spawn_subagent", SPAWN);
+  await state.parent.call("spawn_subagent", { ...SPAWN, description: "Read the rest" });
+  await settled();
+
+  state.frame.key("down");
+  state.frame.key("down");
+
+  const place = state.rowsOf(state.parent.id, 1);
+  equal([place.length, bold(place), place[0]?.text.startsWith("Read the rest")], [1, [true], true]);
+});
+
+test("a pane that shows another session leaves the selection, so x does not stop a subagent of the old session", async () => {
+  const state = await shown([reply.stall("One")]);
+  using _frame = state.frame;
+  await using _host = state.host;
+  await state.parent.call("spawn_subagent", SPAWN);
+  await settled();
+
+  state.frame.key("down");
+  state.show("other");
+  state.frame.key("x");
+  await settled();
+
+  equal([state.rowsOf(state.parent.id).length, state.composer.state.text], [1, "x"]);
 });
 
 test("a focus change leaves the selection, so a key in another pane does not stop the subagent", async () => {
