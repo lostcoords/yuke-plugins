@@ -70,6 +70,16 @@ const subagents = new Map<SessionId, { readonly parent: SessionId; readonly labe
 /** The parents with a running turn. */
 const busy = new Set<SessionId>();
 
+/** The one view of a parent while any subagent of the parent runs. */
+interface ParentView {
+  runs: number;
+  readonly ended: AbortController;
+  readonly handle: Promise<SessionHandle>;
+}
+
+/** The view of each parent. A view for each run would copy each update of the parent once for each run. */
+const parentViews = new Map<SessionId, ParentView>();
+
 /** Draw the interface again. */
 let redraw = (): void => {};
 
@@ -279,20 +289,14 @@ async function run(
   };
 }
 
-/** Send `message` to the subagent `id`, wait for its end, and give its report. The host drops the report after a stop. */
-async function work(
-  s: SessionContext,
-  running: Map<SessionId, Running>,
-  id: SessionId,
-  label: string,
-  model: string,
-  message: string,
-  signal: AbortSignal,
-): Promise<JobReport> {
-  const ended = new AbortController();
-  try {
-    // A session with a running job and no holder closes after `sessionIdleMinutes`, and the close stops the job.
-    const parent = await sessions.open(s.sessionId, {
+/** Count one more run on the view of the parent `s`, and open the view for the first run. */
+function holdParent(s: SessionContext): ParentView {
+  let view = parentViews.get(s.sessionId);
+  if (view === undefined) {
+    const ended = new AbortController();
+    // After its turn ends, a session with a job and no holder closes after `sessionIdleMinutes`.
+    // The close stops the job.
+    const handle = sessions.open(s.sessionId, {
       tail: 0,
       signal: ended.signal,
       event(event) {
@@ -305,6 +309,35 @@ async function work(
         }
       },
     });
+    view = { runs: 0, ended, handle };
+    parentViews.set(s.sessionId, view);
+  }
+  view.runs += 1;
+  return view;
+}
+
+/** End one run on `view`. The last run ends the view. */
+function releaseParent(parent: SessionId, view: ParentView): void {
+  view.runs -= 1;
+  if (view.runs > 0) return;
+  parentViews.delete(parent);
+  view.ended.abort();
+}
+
+/** Send `message` to the subagent `id`, wait for its end, and give its report. The host drops the report after a stop. */
+async function work(
+  s: SessionContext,
+  running: Map<SessionId, Running>,
+  id: SessionId,
+  label: string,
+  model: string,
+  message: string,
+  signal: AbortSignal,
+): Promise<JobReport> {
+  const ended = new AbortController();
+  const view = holdParent(s);
+  try {
+    const parent = await view.handle;
     const handle: SessionHandle = await sessions.open(id, {
       tail: 0,
       signal: ended.signal,
@@ -343,6 +376,7 @@ async function work(
   } finally {
     running.delete(id);
     redraw();
+    releaseParent(s.sessionId, view);
     ended.abort();
     // A close or a reload leaves the run in the log, so the next process tells about it. A crash also leaves it.
     if (!s.signal.aborted) await log.remove(s.sessionId, [id]);

@@ -28,12 +28,14 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   const gate = Promise.withResolvers<void>();
   // The plugin waits for this promise before each open. A test replaces it to hold the start of a job.
   const opening = { wait: Promise.resolve() };
+  const opens: { readonly id: string; readonly signal: AbortSignal | undefined }[] = [];
   let dataDirectory = "";
   const pluginApply: PluginApply = (ctx) => {
     dataDirectory = ctx.dataDir;
     const real = ctx.get("sessions");
     sessions = real;
     const open: Sessions["open"] = async (id, options) => {
+      opens.push({ id, signal: options?.signal });
       await opening.wait;
       return real.open(id, options);
     };
@@ -91,7 +93,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   const parent = await host.openSession();
   const list = sessions as unknown as Sessions;
   const handle = await list.open(parent.id, { tail: 0, event() {} });
-  return { host, parent, list, handle, openGate: gate.resolve, opening, dataDir: () => dataDirectory };
+  return { host, parent, list, handle, openGate: gate.resolve, opening, opens, dataDir: () => dataDirectory };
 }
 
 type Opened = Awaited<ReturnType<typeof opened>>;
@@ -397,6 +399,63 @@ test("two parallel spawns create two subagents", async () => {
   await settled();
 
   equal((await list.list({ parent: parent.id })).sessions.length, 2);
+});
+
+test("parallel runs share one view of the parent, and a later run opens another", async () => {
+  const state = await opened([
+    reply.toolCalls([
+      { name: "spawn_subagent", args: SPAWN },
+      { name: "spawn_subagent", args: SPAWN },
+      { name: "gate", args: {} },
+    ]),
+    reply.text("Two tables."),
+    reply.text("Two tables."),
+    reply.text("Thanks."),
+    reply.toolCalls([{ name: "spawn_subagent", args: SPAWN }]),
+    reply.text("Two tables."),
+    reply.text("Started."),
+    reply.text("Thanks."),
+  ]);
+  const { host, parent, openGate, opens } = state;
+  await using _host = host;
+  const viewsOfParent = (): number => opens.filter((open) => open.id === parent.id).length;
+
+  const sent = parent.send("Read the store.");
+  await settled();
+  openGate();
+  await sent;
+  await settled();
+  equal(viewsOfParent(), 1);
+
+  await parent.send("Read it again.");
+  await settled();
+  equal(viewsOfParent(), 2);
+});
+
+test("the view of the parent stays until its last subagent ends", async () => {
+  const state = await opened([
+    reply.toolCalls([
+      { name: "spawn_subagent", args: SPAWN },
+      { name: "spawn_subagent", args: SPAWN },
+      { name: "gate", args: {} },
+    ]),
+    reply.text("Two tables."),
+    reply.stall("Reading"),
+    reply.text("Thanks."),
+  ]);
+  const { host, parent, handle, openGate, opens } = state;
+  await using _host = host;
+  const sent = parent.send("Read the store.");
+  await settled();
+  const view = opens.find((open) => open.id === parent.id)?.signal;
+  equal(handle.jobs().length, 1);
+  equal(view?.aborted, false);
+
+  await handle.stopJob(handle.jobs()[0]?.id as string);
+  await settled();
+  equal(view?.aborted, true);
+  openGate();
+  await sent;
 });
 
 /** The running subagents that the log file of `parent` holds. */
