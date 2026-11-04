@@ -2,6 +2,7 @@ import type { PluginContext } from "yuke:plugins";
 import { assert, createFrame } from "yuke:test";
 import { type EditorSpan, type EditorState, TextEditor, type View } from "yuke:tui";
 import { apply } from "../src/index.ts";
+import type { ComposerVim } from "../src/service.ts";
 
 export function harness(editors: readonly TextEditor[]) {
   const root: View = {
@@ -15,16 +16,22 @@ export function harness(editors: readonly TextEditor[]) {
   };
   const frame = createFrame({ width: 48, height: 12 }, () => root);
   const surface = frame.surface("vim");
+  let vim: ComposerVim | undefined;
   apply({
     get: (name: string) => {
       assert(name === "tui", `Unexpected service: ${name}`);
       return surface.tui;
     },
+    provide: (name: string, service: ComposerVim) => {
+      assert(name === "composer-vim");
+      vim = service;
+    },
     signal: surface.signal,
     notify() {},
   } as unknown as PluginContext);
   frame.draw();
-  return { frame, surface };
+  assert(vim !== undefined);
+  return { frame, surface, vim };
 }
 
 export function composer(text = "", caret = 0, spans: readonly EditorSpan[] = []) {
