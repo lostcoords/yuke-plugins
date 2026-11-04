@@ -1,0 +1,11 @@
+{
+  "name": "titles",
+  "version": "0.1.0",
+  "description": "Short session titles from the first message, with a model picker and ordered fallbacks.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"]
+    }
+  }
+}
