@@ -223,7 +223,7 @@ for (const width of [32, 100]) {
               show: async () => {},
               onChange: () => () => {},
               addComposerView: () => () => {},
-              present: () => () => {},
+              setPresentation: () => () => {},
             });
           },
         },
@@ -429,7 +429,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
               show: async () => {},
               onChange: () => () => {},
               addComposerView: () => () => {},
-              present: () => () => {},
+              setPresentation: () => () => {},
             });
           },
         },
@@ -503,7 +503,7 @@ test("the installed manifest loads against Yuke's plugin loader", async () => {
             show: async () => {},
             onChange: () => () => {},
             addComposerView: () => () => {},
-            present: () => () => {},
+            setPresentation: () => () => {},
           });
         },
       },
@@ -592,7 +592,7 @@ for (const outcome of ["error", "cancel"]) {
               show: async () => {},
               onChange: () => () => {},
               addComposerView: () => () => {},
-              present: () => () => {},
+              setPresentation: () => () => {},
             });
           },
         },

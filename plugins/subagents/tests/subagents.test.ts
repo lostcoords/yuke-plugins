@@ -92,7 +92,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   });
   const parent = await host.openSession();
   const list = sessions as unknown as Sessions;
-  const handle = await list.open(parent.id, { tail: 0, event() {} });
+  const handle = await list.open(parent.id, { tail: 0, onEvent() {} });
   return { host, parent, list, handle, openGate: gate.resolve, opening, opens, dataDir: () => dataDirectory };
 }
 
@@ -177,7 +177,7 @@ test("a move of a foreground subagent answers the call, and the report reaches t
   const running = parent.call("spawn_subagent", { ...SPAWN, background: false });
   await settled();
 
-  handle.background();
+  handle.moveJobsToBackground();
   const moved = await running;
   const id = await childOf(state);
   const jobs = handle.jobs().map((job) => [job.id, job.label]);
@@ -280,7 +280,7 @@ test("the close of the parent stops a subagent that runs", async () => {
   await settled();
   const id = await childOf(state);
 
-  await list.close(parent.id);
+  await list.closeForAll(parent.id);
   await settled();
 
   equal((await list.get(id)).activity, "idle");
@@ -310,7 +310,7 @@ test("a cancelled turn reports cancelled, not completed", async () => {
   await settled();
   const id = await childOf(state);
   const closed = new AbortController();
-  const child = await list.open(id, { tail: 0, signal: closed.signal, event() {} });
+  const child = await list.open(id, { tail: 0, signal: closed.signal, onEvent() {} });
   child.cancel();
   await settled();
   closed.abort();
@@ -485,7 +485,7 @@ test("a subagent that ends or stops leaves the log, and a close of the parent ke
   const ended = await logged(dataDir(), parent.id);
   await parent.call("message_subagent", { id: first, message: "Once more.", background: true });
   await settled();
-  await list.close(parent.id);
+  await list.closeForAll(parent.id);
   await settled();
 
   equal([running, stopped, ended], [[first], [], []]);

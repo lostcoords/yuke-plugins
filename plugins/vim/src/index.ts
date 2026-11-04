@@ -14,7 +14,7 @@ export function apply(ctx: PluginContext): (() => void) | undefined {
     if (editor.kind !== "editor" || editor.role !== "composer") return;
     return composer.bind(editor, mount.signal);
   });
-  const stopFocus = tui.onFocus((change) => {
+  const stopFocus = tui.onFocusChange((change) => {
     if (change.previous instanceof TextEditor) composer.cancel(change.previous);
     composer.updateStatus();
   });

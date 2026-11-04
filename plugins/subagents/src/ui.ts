@@ -65,7 +65,7 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
   });
 
   // A selection belongs to its pane, so a key in another pane never acts on it.
-  tui.onFocus(() => {
+  tui.onFocusChange(() => {
     if (selected !== undefined) leave();
   });
 

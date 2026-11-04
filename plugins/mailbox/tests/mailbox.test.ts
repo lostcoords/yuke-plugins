@@ -73,9 +73,9 @@ test("a direct message wakes an idle session and reaches the model as an agent n
   equal([queued.status, queued.to], ["queued", target]);
   assert(Number.isSafeInteger(queued.inputId));
   const controller = new AbortController();
-  const handle = await state.sessions.open(second.id, { tail: 0, signal: controller.signal, event() {} });
+  const handle = await state.sessions.open(second.id, { tail: 0, signal: controller.signal, onEvent() {} });
   try {
-    await handle.idle();
+    await handle.waitForIdle();
   } finally {
     controller.abort();
   }

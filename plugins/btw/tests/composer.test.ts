@@ -18,7 +18,7 @@ for (const width of [32, 100]) {
               show: async () => {},
               onChange: () => () => {},
               addComposerView: () => () => {},
-              present: () => () => {},
+              setPresentation: () => () => {},
             });
           },
         },

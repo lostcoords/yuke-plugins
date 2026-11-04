@@ -180,7 +180,7 @@ export async function session(s: SessionContext): Promise<undefined> {
         const model = row.session.model.model;
         return run(s, context, running, args.id, args.message, args.message, args.background, model);
       }
-      active.inputs.push(await active.handle.input([{ user_text: args.message }]));
+      active.inputs.push(await active.handle.sendMessage([{ user_text: args.message }]));
       return {
         text: `Subagent ${args.id} still runs and has the message. ${WAIT_RULE}`,
         display: [{ kind: "markdown", text: "Message sent" }],
@@ -299,7 +299,7 @@ function holdParent(s: SessionContext): ParentView {
     const handle = sessions.open(s.sessionId, {
       tail: 0,
       signal: ended.signal,
-      event(event) {
+      onEvent(event) {
         const updates = "snapshot" in event ? event.snapshot.updates : [event.update];
         for (const update of updates) {
           if (update.sessionUpdate !== "state") continue;
@@ -341,7 +341,7 @@ async function work(
     const handle: SessionHandle = await sessions.open(id, {
       tail: 0,
       signal: ended.signal,
-      event(event) {
+      onEvent(event) {
         if ("snapshot" in event || event.update.sessionUpdate !== "interaction_requested") return;
         const update = event.update;
         // A subagent has no user, so the parent asks its user.
@@ -360,7 +360,7 @@ async function work(
     const active: Running = {
       handle,
       parent,
-      inputs: [await handle.input([{ user_text: message }])],
+      inputs: [await handle.sendMessage([{ user_text: message }])],
       label,
       model,
       started: tui?.now() ?? 0,
@@ -371,7 +371,7 @@ async function work(
     // A stop can come during the waits above, and an abort event does not fire again.
     if (signal.aborted) void stop(active);
     else signal.addEventListener("abort", () => void stop(active));
-    await handle.idle();
+    await handle.waitForIdle();
     return await reportOf(id, before);
   } finally {
     running.delete(id);

@@ -88,7 +88,7 @@ async function shown(replies: readonly Reply[]) {
   surface.tui.panes.split(() => composer);
   const parent = await host.openSession();
   session = parent.id;
-  const held = await (sessions as unknown as Sessions).open(parent.id, { tail: 0, event() {} });
+  const held = await (sessions as unknown as Sessions).open(parent.id, { tail: 0, onEvent() {} });
   frame.start();
   /** The rows that the view of `create` draws for a pane on the session `id`, with `height` rows or all it wants. */
   const drawn = (create: Create | undefined, id: string | undefined, height?: number) => {
@@ -224,7 +224,7 @@ test("a subagent stays read-only after its session closes", async () => {
   await settled();
   const [child] = await state.children();
 
-  await state.sessions().close(child as string);
+  await state.sessions().closeForAll(child as string);
   await settled();
 
   equal(state.readOnly()?.(child as string), { text: "Subagent: Read the store", back: state.parent.id });

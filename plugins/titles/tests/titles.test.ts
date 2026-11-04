@@ -154,10 +154,10 @@ test("manual names and child sessions keep their titles", async () => {
   await state.session.send("Fix login.");
   const childId = await state.sessions.create(state.session.settings, { parent: state.session.id });
   const controller = new AbortController();
-  const child = await state.sessions.open(childId, { tail: 0, signal: controller.signal, event() {} });
+  const child = await state.sessions.open(childId, { tail: 0, signal: controller.signal, onEvent() {} });
   try {
-    await child.input([{ user_text: "Review login." }]);
-    await child.idle();
+    await child.sendMessage([{ user_text: "Review login." }]);
+    await child.waitForIdle();
     equal((await state.sessions.get(childId)).session.title, "Review login.");
   } finally {
     controller.abort();
@@ -205,17 +205,17 @@ test("notifications do not name sessions and the first displayed message supplie
   await using host = state.host;
   state.release();
   const controller = new AbortController();
-  const handle = await state.sessions.open(state.session.id, { tail: 0, signal: controller.signal, event() {} });
+  const handle = await state.sessions.open(state.session.id, { tail: 0, signal: controller.signal, onEvent() {} });
   try {
-    await handle.sendNotification("Background job finished.", "A job finished.");
-    await handle.idle();
+    await handle.notifyModel("Background job finished.", "A job finished.");
+    await handle.waitForIdle();
     equal([await state.title(), host.requests.length], [undefined, 1]);
     // The displayed request, not the expanded model-only prompt, supplies the title.
     state.hold();
-    await handle.input([{ user_text: "Explain this API." }], [{ user_text: "Expanded private instructions." }]);
+    await handle.sendMessage([{ user_text: "Explain this API." }], [{ user_text: "Expanded private instructions." }]);
     await waitFor(async () => (await state.title()) === "Original request title");
     state.release();
-    await handle.idle();
+    await handle.waitForIdle();
     equal((await firstMessage(state.sessions, state.session.id))?.text, "Explain this API.");
     equal(host.requests.find((request) => request.tools.length === 0)?.messages, [
       { role: "user", text: "Explain this API." },

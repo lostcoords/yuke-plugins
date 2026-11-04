@@ -4,9 +4,9 @@ export function installStyles(tui: Tui): void {
   tui.styles.set({
     "btw.panel": { fg: "fg", bg: "bg" },
     "btw.title": { fg: "accent", bold: true },
-    "btw.question": { link: "chat.meta" },
-    "btw.working": { link: "chat.hint" },
-    "btw.hint": { link: "chat.meta" },
+    "btw.question": { inherits: "chat.meta" },
+    "btw.working": { inherits: "chat.hint" },
+    "btw.hint": { inherits: "chat.meta" },
   });
 }
 
