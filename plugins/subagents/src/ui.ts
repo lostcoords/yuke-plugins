@@ -52,7 +52,7 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     if (source.anyRunning()) tick = tui.after(1000, redraw);
   };
 
-  chat.setReadOnly(source.readOnly);
+  chat.addReadOnly(source.readOnly);
 
   tui.commands.add({
     name: "models",

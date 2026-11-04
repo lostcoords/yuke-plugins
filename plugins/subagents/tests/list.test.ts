@@ -56,7 +56,7 @@ async function shown(replies: readonly Reply[]) {
       (place === "below" ? below : above).push(create);
       return () => {};
     },
-    setReadOnly: (source: typeof readOnly) => {
+    addReadOnly: (source: typeof readOnly) => {
       readOnly = source;
       return () => {};
     },
