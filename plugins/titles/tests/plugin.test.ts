@@ -19,7 +19,7 @@ test("the settings command saves a picked model and regenerate renames the focus
             session: () => shown,
             show: async () => {},
             onChange: () => () => {},
-            addComposerRows: () => () => {},
+            addComposerView: () => () => {},
             present: () => () => {},
             setReadOnly: () => () => {},
           });

@@ -10,6 +10,7 @@ export async function apply(ctx: PluginContext): Promise<() => Promise<void>> {
   if (tui !== undefined) {
     tui.commands.add({
       name: "settings",
+      slash: "titles:settings",
       description: "Choose session title models and their fallback order",
       run: async () => {
         await openModelDialog(tui, titles.models, (text) => ctx.notify("error", text)).catch((error: unknown) =>
@@ -20,6 +21,7 @@ export async function apply(ctx: PluginContext): Promise<() => Promise<void>> {
 
     tui.commands.add({
       name: "regenerate",
+      slash: "titles:regenerate",
       description: "Regenerate this session's title from its first message",
       run: async () => {
         const pane = tui.panes.active?.view;
