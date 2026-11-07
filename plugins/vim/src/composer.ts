@@ -42,6 +42,12 @@ const VERTICAL = new Set(["j", "k", "up", "down", "gj", "gk"]);
 const NAMED_MOTIONS = new Set(["left", "right", "up", "down", "home", "end"]);
 const REVERSE_FIND: Readonly<Record<string, string>> = { f: "F", F: "f", t: "T", T: "t" };
 
+/** True for a key that the native editor would use to change text: deletions, line ends, and control shortcuts. */
+function editsNatively({ code, modifiers }: KeyEvent): boolean {
+  if (code === "backspace" || code === "delete") return true;
+  return (code === "enter" || code === "character") && Object.values(modifiers).some(Boolean);
+}
+
 class ComposerState {
   mode: Mode = "insert";
   presentedMode: Mode | undefined;
@@ -120,9 +126,12 @@ export class ComposerEditor {
       return handleKey(event);
     }, "beforeKeymap");
     extension.onKey((event) => {
-      if (event !== keymapEvent) return false;
-      keymapEvent = undefined;
-      return handleKey(event);
+      if (event === keymapEvent) {
+        keymapEvent = undefined;
+        if (handleKey(event)) return true;
+      }
+      // The keymap had its turn: outside Insert mode, keep native editing from changing the draft.
+      return state.mode !== "insert" && editsNatively(event);
     });
     extension.onChange((change) => {
       if (state.muted) return;
@@ -1278,6 +1287,8 @@ export class ComposerEditor {
       this.complete(editor, state, prefix + stroke, count, "", counted);
       return true;
     }
+    if (stroke === "backspace") stroke = "h";
+    else if (stroke === "delete") stroke = "x";
     if (stroke.length === 1 && stroke >= "0" && stroke <= "9" && (stroke !== "0" || state.count > 0)) {
       state.count = state.count * 10 + Number(stroke);
       if ((state.leading || 1) * state.count > MAX_COUNT) {

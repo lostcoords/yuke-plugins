@@ -358,3 +358,62 @@ test("the previous Visual area follows inserted lines but keeps same-line column
   sameFrame.key("esc l v l esc 0 i X esc g v y");
   equal([sameLine.editor.state.text, sameFrame.copies], ["Xabcd", ["ab"]]);
 });
+
+for (const key of [
+  "ctrl+w",
+  "ctrl+u",
+  "ctrl+k",
+  "ctrl+h",
+  "alt+d",
+  "alt+backspace",
+  "ctrl+backspace",
+  "super+backspace",
+  "ctrl+delete",
+  "alt+delete",
+  "shift+enter",
+  "alt+enter",
+  "ctrl+j",
+]) {
+  for (const mode of ["", "v"]) {
+    test(`${mode ? "visual" : "normal"} mode: native editing key ${key} leaves the draft unchanged`, () => {
+      const fixture = composer("abc def");
+      using frame = fixture.frame;
+      frame.key("esc");
+      fixture.editor.caret = 4;
+      if (mode) frame.key(mode);
+      frame.key(key);
+      equal([fixture.editor.state.text, fixture.submitted.length], ["abc def", 0]);
+    });
+  }
+}
+
+const deletionKeys: readonly [string, string, number, string, string, number][] = [
+  ["backspace moves left", "abc def", 4, "backspace", "abc def", 3],
+  ["backspace stops at the line start", "abc\ndef", 4, "backspace", "abc\ndef", 4],
+  ["backspace takes a count", "abc def", 5, "3 backspace", "abc def", 2],
+  ["d backspace deletes the previous character", "abc def", 4, "d backspace", "abcdef", 3],
+  ["delete acts as x", "abc def", 4, "delete", "abc ef", 4],
+  ["delete takes a count", "abc def", 4, "2 delete", "abc f", 4],
+  ["delete deletes a visual selection", "abc def", 4, "v l delete", "abc f", 4],
+  ["delete repeats with dot", "abcdef", 0, "delete .", "cdef", 0],
+];
+
+for (const [behavior, text, caret, keys, expectedText, expectedCaret] of deletionKeys) {
+  test(`normal mode: ${behavior}`, () => {
+    const fixture = composer(text);
+    using frame = fixture.frame;
+    frame.key("esc");
+    fixture.editor.caret = caret;
+    frame.key(keys);
+    equal([fixture.editor.state.text, fixture.editor.caret], [expectedText, expectedCaret]);
+  });
+}
+
+test("insert mode keeps native backspace, delete, and word deletion", () => {
+  const fixture = composer("abc def", 4);
+  using frame = fixture.frame;
+  frame.key("backspace delete");
+  equal(fixture.editor.state.text, "abcef");
+  frame.key("alt+backspace");
+  equal(fixture.editor.state.text, "ef");
+});
