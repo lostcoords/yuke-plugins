@@ -206,7 +206,6 @@ def queued_result(body, peer_id):
             isinstance(result, dict)
             and result.get("status") == "queued"
             and result.get("to") == peer_id
-            and isinstance(result.get("inputId"), int)
         ):
             return result
     return None
@@ -288,6 +287,21 @@ class Client:
         if self.process.returncode:
             error = self.process.stderr.read()
             raise AssertionError(f"yuke exited with {self.process.returncode}: {error[-3000:]}")
+
+
+def records(peers):
+    """Each registry entry, with its socket path. The entry is empty: its name is the runtime id."""
+    return {path: Path(f"/tmp/yuke-mailbox-{path.stem}/socket") for path in peers.glob("*.json")}
+
+
+def assert_closed(before, after):
+    """Exactly one endpoint closed: its entry, its socket, and its private socket folder are gone."""
+    closed = [socket for path, socket in before.items() if path not in after]
+    assert len(closed) == 1, (before, after)
+
+    socket = closed[0]
+    assert socket.name == "socket" and socket.parent.name.startswith("yuke-mailbox-"), socket
+    assert not socket.parent.exists(), socket.parent
 
 
 def new_session(client, cwd, model):
@@ -394,9 +408,8 @@ def main():
         model.right_id = right_id
         peer_records = list((root / "data/yuke/plugins/mailbox/peers").glob("*.json"))
         assert len(peer_records) == 2, peer_records
-        socket_paths = [json.loads(path.read_text()) for path in peer_records]
-        assert all(isinstance(path, str) and path.startswith("/tmp/yuke-mailbox-") for path in socket_paths)
-        assert len(set(socket_paths)) == 2, socket_paths
+        socket_paths = list(records(root / "data/yuke/plugins/mailbox/peers").values())
+        assert all(path.exists() for path in socket_paths), socket_paths
 
         # The left agent sends an explicit message to the right idle agent.
         before_message = len(model.requests)
@@ -407,7 +420,6 @@ def main():
         left_queued = queued_result(left_queued_request, right_id)
         assert left_queued["status"] == "queued"
         assert left_queued["to"] == right_id
-        assert isinstance(left_queued["inputId"], int)
         right_notification = model.wait_for(
             "right", lambda body: "hello from left" in json.dumps(body), start=before_message
         )
@@ -421,7 +433,6 @@ def main():
         right_queued = queued_result(right_queued_request, left_id)
         assert right_queued["status"] == "queued"
         assert right_queued["to"] == left_id
-        assert isinstance(right_queued["inputId"], int)
 
         # The right agent replies through the same tool. The left agent must wake.
         left_reply = model.wait_for("left", lambda body: "reply from right" in json.dumps(body))
@@ -434,21 +445,16 @@ def main():
 
         # Reload replaces one runtime without replacing its session or the other process.
         peers = root / "data/yuke/plugins/mailbox/peers"
-        old_record = peers / f"{left_id.split('/', 1)[0]}.json"
-        old_socket = Path(json.loads(old_record.read_text()))
+        before_reload = records(peers)
         left.call("profile/reload", {})
-        assert not old_record.exists(), old_record
-        assert not old_socket.exists(), old_socket
+        assert_closed(before_reload, records(peers))
         model.replies["right"].extend([tool("mailbox_list_agents"), text("I found the reloaded agent.")])
         before_reload_discovery = len(model.requests)
         send(right, right_session, "Find the reloaded agent.")
         refreshed = agent_result(model.wait_for("right", has_agent_result, start=before_reload_discovery))
-        matches = [agent for agent in refreshed["agents"] if agent["sessionId"] == left_session]
-        assert len(matches) == 1, refreshed
-        assert matches[0]["id"] != left_id, refreshed
+        # The id of a session stays the same across a reload.
+        assert [agent["id"] for agent in refreshed["agents"]] == [left_id], refreshed
         assert refreshed["self"] == right_id, refreshed
-        left_id = matches[0]["id"]
-        model.left_id = left_id
         right.until("right idle after reload discovery", idle(right_session))
         assert len(list(peers.glob("*.json"))) == 2
 
@@ -468,17 +474,9 @@ def main():
         right.until("right idle after the post-reload send", idle(right_session))
 
         # Stop one process cleanly. The remaining process must no longer discover it.
-        left_record = peers / f"{left_id.split('/', 1)[0]}.json"
-        left_socket = Path(json.loads(left_record.read_text()))
+        before_close = records(peers)
         left.close()
-        assert not left_socket.exists(), left_socket
-        deadline = time.monotonic() + WAIT
-        peers = root / "data/yuke/plugins/mailbox/peers"
-        left_runtime = left_id.split("/", 1)[0]
-        left_record = peers / f"{left_runtime}.json"
-        while left_record.exists() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert not left_record.exists(), left_record
+        assert_closed(before_close, records(peers))
 
         model.replies["right"].append(tool("mailbox_list_agents"))
         model.replies["right"].append(text("The left agent is gone."))

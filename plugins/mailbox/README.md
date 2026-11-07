@@ -21,4 +21,10 @@ Open two sessions and ask an agent:
 
 Keep both sessions open. Messages arrive as notifications. A successful send means queued, not read or completed. Each session keeps its own conversation.
 
+An agent id is the folder name and a short code from the session id, like `yuke-plugins-7f3k`. It stays the same across `/reload` and restarts, unless the session's folder changes.
+
+Only top-level sessions and forks use the mailbox. Subagents report to their parent.
+
+Each Yuke process listens on a socket in its own private folder, `/tmp/yuke-mailbox-<runtime>/`. Discovery skips a process that does not answer within 2 seconds, and removes the entries of processes that ended without closing.
+
 [MIT](../../LICENSE)

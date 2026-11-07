@@ -1,19 +1,22 @@
-import { readDir, readTextFile, writeTextFile } from "yuke:fs";
+import { FileSystemError, lstat, mkdir, readDir, remove, writeTextFile } from "yuke:fs";
+import { listen } from "yuke:net";
 import type { Sessions } from "yuke:plugins";
-import { assert, createHost, equal, type Reply, reply, test } from "yuke:test";
+import { assert, createHost, equal, type Reply, rejects, reply, type TestSession, test } from "yuke:test";
 import { apply as subagentsApply, session as subagentsSession } from "../../subagents/src/index.ts";
 import { apply, session } from "../src/index.ts";
-import type { Peer } from "../src/mailbox.ts";
+import { type Agent, agentId, type Sender } from "../src/mailbox.ts";
+import { serve } from "../src/transport.ts";
 
 interface Listing {
   readonly self: string;
-  readonly agents: readonly Peer[];
+  readonly agents: readonly Agent[];
 }
 
-/** Open the real plugin on a host with a scripted model. */
+/** Open the real plugin on a host with a scripted model, with two top-level sessions. */
 async function opened(replies: readonly Reply[] = []) {
   let sessions: Sessions | undefined;
   let dataDir = "";
+
   const host = await createHost({
     plugins: [
       {
@@ -28,30 +31,108 @@ async function opened(replies: readonly Reply[] = []) {
     ],
     replies,
   });
+
   const first = await host.openSession();
+  const second = await host.openSession();
   assert(sessions !== undefined);
-  return { host, first, sessions, dataDir };
+
+  return { host, first, second, sessions, dataDir, target: agentId(second.settings.cwd, second.id) };
 }
 
 /** Read the result as an agent does, and fail if the call failed. */
-async function list(agent: Awaited<ReturnType<typeof opened>>["first"]): Promise<Listing> {
+async function list(agent: TestSession): Promise<Listing> {
   const result = await agent.call("mailbox_list_agents", {});
   equal(result.isError, false);
+
   return JSON.parse(result.text) as Listing;
 }
 
-test("agents discover other open sessions with their current titles and folders, but not themselves", async () => {
-  const state = await opened();
-  await using host = state.host;
-  const second = await host.openSession();
-  await state.sessions.rename(second.id, "Review the API");
-  const other = await list(second);
-  const result = await list(state.first);
-  equal(
-    result.agents.map((agent) => [agent.sessionId, agent.title, agent.folder, agent.activity]),
-    [[second.id, "Review the API", second.settings.cwd, "idle"]],
+/** Send as an agent does. */
+function send(agent: TestSession, to: string, message: string) {
+  return agent.call("mailbox_send_message", { to, message });
+}
+
+/** Check that a call failed with `text` in its error. */
+function failed(result: { readonly isError: boolean; readonly text: string }, text: string): void {
+  equal(result.isError, true);
+  assert(result.text.includes(text), result.text);
+}
+
+/** Wait until the session `id` handled its queued inputs. */
+async function idle(sessions: Sessions, id: string): Promise<void> {
+  const controller = new AbortController();
+  const handle = await sessions.open(id, { tail: 0, signal: controller.signal, onEvent() {} });
+  try {
+    await handle.waitForIdle();
+  } finally {
+    controller.abort();
+  }
+}
+
+/** Whether `path` exists, without following a link. */
+async function exists(path: string): Promise<boolean> {
+  const error = await lstat(path).then(
+    () => undefined,
+    (error: unknown) => error,
   );
-  equal(result.agents[0]?.id, other.self);
+  if (error instanceof FileSystemError && error.code === "ENOENT") return false;
+  if (error !== undefined) throw error;
+
+  return true;
+}
+
+/**
+ * A registry entry and socket folder as another process would make them, for `serve` or a raw listener.
+ * Its runtime id sorts before the real one, so a send tries it first. Disposal removes both.
+ */
+async function endpoint(dataDir: string) {
+  const runtime = `0test${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const folder = `/tmp/yuke-mailbox-${runtime}`;
+  const entry = `${dataDir}/peers/${runtime}.json`;
+
+  await mkdir(folder, { mode: 0o700 });
+  await writeTextFile(entry, "");
+
+  return {
+    entry,
+    folder,
+    socket: `${folder}/socket`,
+    async [Symbol.asyncDispose]() {
+      await remove(entry, { force: true });
+      await remove(folder, { recursive: true, force: true });
+    },
+  };
+}
+
+/** Serve `handle` at `socket`, as the endpoint of another process would. Disposal stops it. */
+function serving(socket: string, handle: (value: unknown) => Promise<unknown>) {
+  const stop = serve(socket, new AbortController().signal, handle, () => {});
+  return { [Symbol.asyncDispose]: stop };
+}
+
+test("an agent id is the folder name and four characters of the random end of the session id", () => {
+  const sessionId = "019a5c2e-1111-7222-8333-00000000abcd";
+
+  equal(agentId("/Users/me/Work/yuke-plugins", sessionId), "yuke-plugins-0xxp");
+  equal(agentId("/Users/me/Work/My Project!/", sessionId), "my-project-0xxp");
+  equal(agentId("/", sessionId), "session-0xxp");
+  equal(agentId("/srv/日本語", sessionId), "session-0xxp");
+
+  // Sessions of the same moment share the start of the id, so only the end tells them apart.
+  equal(agentId("/w/api", "019a5c2e-1111-7222-8333-000000000001") === agentId("/w/api", sessionId), false);
+});
+
+test("agents discover other open sessions with their ids, current titles and folders, but not themselves", async () => {
+  const state = await opened();
+  await using _host = state.host;
+  await state.sessions.rename(state.second.id, "Review the API");
+
+  const other = await list(state.second);
+  const result = await list(state.first);
+
+  const folder = state.second.settings.cwd;
+  equal(result.agents, [{ id: state.target, title: "Review the API", folder, activity: "idle" }]);
+  equal(other.self, state.target);
   equal(
     other.agents.map((agent) => agent.id),
     [result.self],
@@ -61,91 +142,191 @@ test("agents discover other open sessions with their current titles and folders,
 test("a direct message wakes an idle session and reaches the model as an agent notification", async () => {
   const state = await opened([reply.text("Noted.")]);
   await using host = state.host;
-  const second = await host.openSession();
-  const target = (await list(second)).self;
+  await state.sessions.rename(state.first.id, "Plan the database migration for the tenants");
   const from = (await list(state.first)).self;
-  const result = await state.first.call("mailbox_send_message", {
-    to: target,
-    message: "The migration is ready.\nUse tenant_id.",
-  });
+
+  const result = await send(state.first, state.target, "The migration is ready.\nUse tenant_id.");
   equal(result.isError, false);
-  const queued = JSON.parse(result.text) as { status: string; to: string; inputId: number };
-  equal([queued.status, queued.to], ["queued", target]);
-  assert(Number.isSafeInteger(queued.inputId));
-  const controller = new AbortController();
-  const handle = await state.sessions.open(second.id, { tail: 0, signal: controller.signal, onEvent() {} });
-  try {
-    await handle.waitForIdle();
-  } finally {
-    controller.abort();
-  }
+  equal(JSON.parse(result.text), { status: "queued", to: state.target });
+
+  await idle(state.sessions, state.second.id);
   equal(host.requests.length, 1);
+
+  // The user sees the id and a short title.
+  const shown = state.second.transcript.entries.find(
+    (entry) => entry.kind === "input" && entry.source.kind === "plugin",
+  );
+  assert(shown?.kind === "input");
+  equal(shown.content, [
+    {
+      user_text: `Message from ${from} (Plan the database migration for the ten…): The migration is ready.\nUse tenant_id.`,
+    },
+  ]);
+
+  // The model reads the whole sender as JSON.
   const text = host.requests[0]?.messages.at(-1)?.text ?? "";
   assert(text.includes("Message from another Yuke session, not the user."), text);
+
   const line = text.split("\n").at(-1)?.replace("</system_notification>", "") ?? "";
-  const incoming = JSON.parse(line) as { from: Peer; message: string };
-  equal([incoming.from.id, incoming.message], [from, "The migration is ready.\nUse tenant_id."]);
+  equal(JSON.parse(line) as { from: Sender; message: string }, {
+    from: { id: from, title: "Plan the database migration for the tenants", folder: state.first.settings.cwd },
+    message: "The migration is ready.\nUse tenant_id.",
+  });
+
   equal(
     host.notices.filter((notice) => notice.level === "error"),
     [],
   );
 });
 
-test("a closed session leaves discovery and a message to its old address fails", async () => {
+test("child sessions have no mailbox and do not appear in discovery", async () => {
+  const state = await opened([reply.text("Done.")]);
+  await using host = state.host;
+
+  const child = await state.sessions.create(state.first.settings, { parent: state.first.id });
+  const controller = new AbortController();
+  const handle = await state.sessions.open(child, { tail: 0, signal: controller.signal, onEvent() {} });
+
+  try {
+    equal(
+      (await list(state.first)).agents.map((agent) => agent.id),
+      [state.target],
+    );
+
+    await handle.sendMessage([{ user_text: "Work on the task." }]);
+    await handle.waitForIdle();
+  } finally {
+    controller.abort();
+  }
+
+  equal(host.requests.length, 1);
+  equal(host.requests[0]?.system.includes("<mailbox>"), false);
+});
+
+test("a closed session leaves discovery and a message to its old id fails", async () => {
   const state = await opened();
   await using host = state.host;
-  const second = await host.openSession();
-  const target = (await list(second)).self;
-  equal(
-    (await list(state.first)).agents.map((agent) => agent.sessionId),
-    [second.id],
-  );
-  await second.close();
+
+  await state.second.close();
   equal((await list(state.first)).agents, []);
-  const result = await state.first.call("mailbox_send_message", { to: target, message: "Are you there?" });
-  equal(result.isError, true);
-  assert(result.text.includes("the target session is no longer open"), result.text);
+
+  failed(await send(state.first, state.target, "Are you there?"), "the target session is no longer open");
   equal(host.requests.length, 0);
 });
 
-test("empty messages and invalid addresses fail before they can queue work", async () => {
+test("empty messages, invalid ids, and the own id fail before they can queue work", async () => {
   const state = await opened();
   await using host = state.host;
-  const second = await host.openSession();
-  const target = (await list(second)).self;
-  const blank = await state.first.call("mailbox_send_message", { to: target, message: " \n " });
-  equal(blank.isError, true);
-  assert(blank.text.includes("the message is empty"), blank.text);
-  const invalid = await state.first.call("mailbox_send_message", { to: "unknown", message: "Hello" });
-  equal(invalid.isError, true);
-  assert(invalid.text.includes("the target is not an agent id from mailbox_list_agents"), invalid.text);
+
+  failed(await send(state.first, state.target, " \n "), "the message is empty");
+
+  for (const to of ["unknown", "mw1t346z-558vu2wdbbm/019a5c2e-1111-7222-8333-00000000abcd", "Yuke-0xxp"]) {
+    failed(await send(state.first, to, "Hello"), "the target is not an agent id from mailbox_list_agents");
+  }
+
+  failed(await send(state.first, (await list(state.first)).self, "Hello"), "the target is your own id");
   equal(host.requests.length, 0);
 });
 
-test("discovery ignores a registry entry whose socket no longer exists", async () => {
+test("discovery removes the entry and socket folder of an endpoint that died without closing", async () => {
   const state = await opened();
-  await using host = state.host;
-  const second = await host.openSession();
-  const target = (await list(second)).self;
-  await writeTextFile(`${state.dataDir}/peers/dead.json`, JSON.stringify("/tmp/yuke-mailbox-missing.sock"));
+  await using _host = state.host;
+  await using dead = await endpoint(state.dataDir);
+
+  // A file that is not an entry stays.
+  await writeTextFile(`${state.dataDir}/peers/notes.txt`, "keep");
+
   equal(
     (await list(state.first)).agents.map((agent) => agent.id),
-    [target],
+    [state.target],
   );
+
+  equal(await exists(dead.entry), false);
+  equal(await exists(dead.folder), false);
+  equal(await exists(`${state.dataDir}/peers/notes.txt`), true);
 });
 
-test("closing the plugin removes its registry entry and its socket file", async () => {
+test("an endpoint that never answers is skipped after a timeout and stays registered", async () => {
   const state = await opened();
-  const records = await readDir(`${state.dataDir}/peers`);
-  equal(records.length, 1);
-  const path = JSON.parse(await readTextFile(`${state.dataDir}/peers/${records[0]?.name}`)) as string;
-  const { lstat } = await import("yuke:fs");
-  equal((await lstat(path)).isFile, false);
+  await using _host = state.host;
+  await using hung = await endpoint(state.dataDir);
+
+  // The kernel queues the connection, but nothing accepts it, as with a process suspended by Ctrl-Z.
+  using _listener = listen({ path: hung.socket });
+
+  const started = Date.now();
+  equal(
+    (await list(state.first)).agents.map((agent) => agent.id),
+    [state.target],
+  );
+
+  assert(Date.now() - started < 5000);
+  equal(await exists(hung.entry), true);
+});
+
+test("an endpoint with a broken answer is skipped without breaking discovery", async () => {
+  const state = await opened();
+  await using _host = state.host;
+  await using broken = await endpoint(state.dataDir);
+  await using _server = serving(broken.socket, async () => [{ id: 42 }]);
+
+  equal(
+    (await list(state.first)).agents.map((agent) => agent.id),
+    [state.target],
+  );
+
+  assert(state.host.notices.some((notice) => notice.level === "debug" && notice.message.includes("skipped")));
+});
+
+test("during a reload the same session from two endpoints is one agent, and a send reaches it", async () => {
+  const state = await opened([reply.text("Noted.")]);
+  await using host = state.host;
+  await using closing = await endpoint(state.dataDir);
+
+  // The endpoint of the old runtime lists the same session, but it closes and refuses to deliver.
+  const listed = { id: state.target, sessionId: state.second.id, title: null, folder: "/", activity: "idle" };
+  await using _server = serving(closing.socket, async (value) => {
+    if ((value as { method: string }).method === "list") return [listed];
+    throw new Error("the target session is no longer open");
+  });
+
+  equal(
+    (await list(state.first)).agents.map((agent) => agent.id),
+    [state.target],
+  );
+
+  equal((await send(state.first, state.target, "After the reload.")).isError, false);
+
+  await idle(state.sessions, state.second.id);
+  equal(host.requests.length, 1);
+});
+
+test("two different sessions with the same id refuse a send instead of guessing", async () => {
+  const state = await opened();
+  await using host = state.host;
+  await using other = await endpoint(state.dataDir);
+
+  const listed = { id: state.target, sessionId: "another-session", title: null, folder: "/", activity: "idle" };
+  await using _server = serving(other.socket, async () => [listed]);
+
+  failed(await send(state.first, state.target, "Hello"), "more than one session has this id");
+
+  equal(host.requests.length, 0);
+});
+
+test("the socket lives in a private folder that closing removes with the registry entry", async () => {
+  const state = await opened();
+
+  const entries = await readDir(`${state.dataDir}/peers`);
+  equal(entries.length, 1);
+
+  const folder = `/tmp/yuke-mailbox-${entries[0]?.name.replace(/\.json$/, "")}`;
+  equal((await lstat(`${folder}/socket`)).isFile, false);
+
   await state.host.close();
+
   equal(await readDir(`${state.dataDir}/peers`), []);
-  const { FileSystemError } = await import("yuke:fs");
-  const { rejects } = await import("yuke:test");
-  const error = await rejects(lstat(path));
+  const error = await rejects(lstat(folder));
   assert(error instanceof FileSystemError);
   equal(error.code, "ENOENT");
 });
@@ -153,6 +334,7 @@ test("closing the plugin removes its registry entry and its socket file", async 
 test("a message to a busy session waits for its running tool and reaches the next model round", async () => {
   const entered = Promise.withResolvers<void>();
   const released = Promise.withResolvers<void>();
+
   const host = await createHost({
     plugins: [
       {
@@ -182,19 +364,21 @@ test("a message to a busy session waits for its running tool and reaches the nex
     replies: [reply.toolCall("hold", {}), reply.text("I read the update.")],
   });
   await using _host = host;
+
   const recipient = await host.openSession();
   const sender = await host.openSession();
   const target = (await list(recipient)).self;
+
   const running = recipient.send("Start work.");
   try {
     await entered.promise;
-    const sent = await sender.call("mailbox_send_message", { to: target, message: "Use the new API." });
-    equal(sent.isError, false);
+    equal((await send(sender, target, "Use the new API.")).isError, false);
     equal(host.requests.length, 1);
   } finally {
     released.resolve();
     await running;
   }
+
   equal(host.requests.length, 2);
   const messages = host.requests[1]?.messages.map((message) => message.text).join("\n") ?? "";
   assert(messages.includes("the tool finished"), messages);
@@ -213,28 +397,25 @@ test("mailbox tools stay deferred beside subagent tools and discovery works thro
       reply.text("I found the peer."),
     ],
   });
+
   const first = await host.openSession();
   const second = await host.openSession();
   const target = (await list(second)).self;
+
   await first.send("Find the other session.");
   equal(host.requests.length, 3);
+
   const initial = host.requests[0]?.tools ?? [];
   equal(
-    initial
-      .filter(
-        (name) =>
-          name.startsWith("mailbox_") ||
-          name === "spawn_subagent" ||
-          name === "message_subagent" ||
-          name === "tool_call" ||
-          name === "tool_search",
-      )
-      .sort(),
-    ["message_subagent", "spawn_subagent", "tool_call", "tool_search"],
+    initial.some((name) => name.startsWith("mailbox_")),
+    false,
   );
+  assert(initial.includes("spawn_subagent") && initial.includes("tool_search"), initial.join(", "));
+
   const search = host.requests[1]?.messages.at(-1)?.text ?? "";
   assert(search.includes("mailbox_list_agents"), search);
   assert(search.includes("Input schema:"), search);
+
   const result = JSON.parse(host.requests[2]?.messages.at(-1)?.text ?? "") as Listing;
   equal(
     result.agents.map((agent) => agent.id),
@@ -245,6 +426,7 @@ test("mailbox tools stay deferred beside subagent tools and discovery works thro
 test("the coordination hint preserves existing prompt sections and appears once in each turn", async () => {
   const state = await opened([reply.text("First answer."), reply.text("Second answer.")]);
   await using host = state.host;
+
   const built = await state.first.run("prompt.build", {
     sections: { base: "Keep the user's instructions.", project: "Work only on src/." },
   });
@@ -253,11 +435,10 @@ test("the coordination hint preserves existing prompt sections and appears once 
 
   await state.first.send("First turn.");
   await state.first.send("Second turn.");
+
+  const count = (system: string, tag: string) => system.split(tag).length - 1;
   equal(
-    host.requests.map((request) => [
-      (request.system.match(/<mailbox>/g) ?? []).length,
-      (request.system.match(/<\/mailbox>/g) ?? []).length,
-    ]),
+    host.requests.map((request) => [count(request.system, "<mailbox>"), count(request.system, "</mailbox>")]),
     [
       [1, 1],
       [1, 1],
