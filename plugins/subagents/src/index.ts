@@ -404,7 +404,7 @@ async function reportOf(id: SessionId, before: number): Promise<JobReport> {
   const end = commits.at(-1)?.end;
   const failure = end !== null && end !== undefined && "failed" in end ? end.failed : undefined;
   const texts = commits.map((commit) =>
-    commit.blocks.flatMap((block) => ("assistant_text" in block ? [block.assistant_text] : [])).join(""),
+    commit.blocks.flatMap((block) => ("assistant_text" in block ? [block.assistant_text.text] : [])).join(""),
   );
   const text = texts.findLast((candidate) => candidate !== "") ?? "";
   if (failure !== undefined) return { status: "failed", text: text === "" ? failure : `${failure}\n${text}` };

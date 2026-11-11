@@ -566,7 +566,7 @@ test("a compaction before the latest round becomes the side request's cached con
   });
   const main = await host.openSession();
   await main.run("round.before", {
-    context: [{ user_text: "old input" }, { assistant_text: "old answer" }, { user_text: "new input" }],
+    context: [{ user_text: "old input" }, { assistant_text: { text: "old answer" } }, { user_text: "new input" }],
   });
   await ask(main.id, "side question", new AbortController().signal);
   const messages = JSON.stringify(host.requests[0]?.messages);
