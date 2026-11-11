@@ -43,7 +43,7 @@ async function opened(replies: readonly Reply[], models = [PRIMARY], renameWhile
           return () => titles?.close();
         },
         session(s) {
-          s.hook("round.before", async () => {
+          s.addHook("round.before", async () => {
             await main.promise;
             return undefined;
           });
@@ -76,11 +76,11 @@ test("the first user message gets a short title without changing conversation hi
     reply.text("Done."),
   ]);
   await using host = state.host;
-  const running = state.session.send("Can you fix login after the access token expires?");
+  const running = state.session.sendMessage("Can you fix login after the access token expires?");
   await waitFor(async () => (await state.title()) === "Fix login refresh");
   state.release();
   await running;
-  await state.session.send("Check the tests too.");
+  await state.session.sendMessage("Check the tests too.");
 
   equal(await state.title(), "Fix login refresh");
   equal(host.requests.length, 3);
@@ -103,7 +103,7 @@ test("a failed primary request tries the next chosen model", async () => {
     [PRIMARY, FALLBACK],
   );
   await using host = state.host;
-  const running = state.session.send("Fix the token refresh.");
+  const running = state.session.sendMessage("Fix the token refresh.");
   await waitFor(async () => (await state.title()) === "Repair token refresh");
   state.release();
   await running;
@@ -121,7 +121,7 @@ test("an overlong title falls back and unavailable configured models do not use 
     [{ model: "missing/not-a-model", reasoning: "default" }, PRIMARY, FALLBACK],
   );
   await using host = state.host;
-  const running = state.session.send("Repair the login bug.");
+  const running = state.session.sendMessage("Repair the login bug.");
   await waitFor(async () => (await state.title()) === "Repair login");
   state.release();
   await running;
@@ -137,7 +137,7 @@ test("an empty model list leaves automatic naming off and later settings work wi
   const state = await opened([reply.text("First answer."), reply.text("Review API changes")], []);
   await using host = state.host;
   state.release();
-  await state.session.send("First task.");
+  await state.session.sendMessage("First task.");
   equal([await state.title(), host.requests.length], ["First task.", 1]);
 
   await state.titles.models.write({ models: [PRIMARY] });
@@ -151,12 +151,12 @@ test("manual names and child sessions keep their titles", async () => {
   await using host = state.host;
   await state.sessions.rename(state.session.id, "My chosen title");
   state.release();
-  await state.session.send("Fix login.");
+  await state.session.sendMessage("Fix login.");
   const childId = await state.sessions.create(state.session.settings, { parent: state.session.id });
   const controller = new AbortController();
   const child = await state.sessions.open(childId, { tail: 0, signal: controller.signal, onEvent() {} });
   try {
-    await child.sendMessage([{ user_text: "Review login." }]);
+    await child.sendMessage({ content: [{ user_text: "Review login." }] });
     await child.waitForIdle();
     equal((await state.sessions.get(childId)).session.title, "Review login.");
   } finally {
@@ -171,8 +171,8 @@ test("all failed title models retain the initial title and leave the main answer
     [PRIMARY, FALLBACK],
   );
   await using host = state.host;
-  const running = state.session.send("Fix the broken login.");
-  await waitFor(() => host.notices.some((notice) => notice.message.includes("The session title did not change")));
+  const running = state.session.sendMessage("Fix the broken login.");
+  await waitFor(() => host.notices.some((notice) => notice.text.includes("The session title did not change")));
   state.release();
   await running;
 
@@ -186,7 +186,7 @@ test("all failed title models retain the initial title and leave the main answer
 test("a stalled title does not delay the main answer and closing cancels it without a fallback", async () => {
   const state = await opened([reply.stall("Partial"), reply.text("Main answer.")], [PRIMARY, FALLBACK]);
   await using host = state.host;
-  const running = state.session.send("Fix login.");
+  const running = state.session.sendMessage("Fix login.");
   await waitFor(() => host.requests.length === 1);
   state.release();
   await running;
@@ -207,12 +207,15 @@ test("notifications do not name sessions and the first displayed message supplie
   const controller = new AbortController();
   const handle = await state.sessions.open(state.session.id, { tail: 0, signal: controller.signal, onEvent() {} });
   try {
-    await handle.notifyModel("Background job finished.", "A job finished.");
+    await handle.notifyModel({ display: "Background job finished.", text: "A job finished." });
     await handle.waitForIdle();
     equal([await state.title(), host.requests.length], [undefined, 1]);
     // The displayed request, not the expanded model-only prompt, supplies the title.
     state.hold();
-    await handle.sendMessage([{ user_text: "Explain this API." }], [{ user_text: "Expanded private instructions." }]);
+    await handle.sendMessage({
+      content: [{ user_text: "Explain this API." }],
+      modelContent: [{ user_text: "Expanded private instructions." }],
+    });
     await waitFor(async () => (await state.title()) === "Original request title");
     state.release();
     await handle.waitForIdle();
@@ -228,7 +231,7 @@ test("notifications do not name sessions and the first displayed message supplie
 test("a manual rename made during generation takes precedence over the generated title", async () => {
   const state = await opened([reply.text("Generated title"), reply.text("Main answer.")], [PRIMARY], true);
   await using host = state.host;
-  const running = state.session.send("Fix login.");
+  const running = state.session.sendMessage("Fix login.");
   await waitFor(async () => (await state.title()) === "My manual title");
   await waitForSettled();
   equal(await state.title(), "My manual title");

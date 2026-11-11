@@ -51,5 +51,5 @@ export function apply(ctx: PluginContext): undefined {
     },
   });
 
-  tui.keys.bind("ctrl+k b", "ask");
+  tui.keys.add("ctrl+k b", "ask");
 }

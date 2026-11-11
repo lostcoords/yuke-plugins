@@ -16,7 +16,7 @@ export function browseHistory(
 
   const picker = new Picker<HistoryEntry>({
     items: [],
-    key: (entry) => entry.id,
+    id: (entry) => entry.id,
     label: (entry) => entry.question.replaceAll(/\s+/g, " "),
     detail: (entry) => {
       const model = `${entry.model.provider}/${entry.model.model}`;
@@ -28,11 +28,11 @@ export function browseHistory(
         .filter((entry) => `${entry.question}\n${entry.answer}`.toLowerCase().includes(search))
         .map((entry) => ({ item: entry }));
     },
-    choose: (entry) => {
+    onChoose: (entry) => {
       dialog.close();
       openEntry(entry);
     },
-    cancel: () => dialog.close(),
+    onCancel: () => dialog.close(),
   });
 
   const dialog = tui.dialog({

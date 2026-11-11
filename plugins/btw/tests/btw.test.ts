@@ -32,7 +32,7 @@ test("a side answer arrives while the main model is still streaming and changes 
   });
   const main = await host.openSession();
   const controller = new AbortController();
-  const running = main.send("main task", { signal: controller.signal }).catch(() => {});
+  const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
   await waitFor(() =>
     main.transcript.entries.some((entry) => entry.kind === "text" && entry.text === "working"),
   );
@@ -44,7 +44,7 @@ test("a side answer arrives while the main model is still streaming and changes 
   assert(!JSON.stringify(main.transcript.entries).includes("side question"));
   controller.abort();
   await running;
-  await main.send("continue main");
+  await main.sendMessage("continue main");
   const messages = JSON.stringify(host.requests[2]?.messages);
   assert(messages.includes("main task"));
   assert(messages.includes("continue main"));
@@ -58,7 +58,7 @@ test("a side request preserves the complete main request body except for an appe
     replies: [reply.text("main answer"), reply.text("side answer")],
   });
   const main = await host.openSession();
-  await main.send("main task");
+  await main.sendMessage("main task");
   await ask(main.id, "side question", new AbortController().signal);
   const expected = JSON.parse(JSON.stringify(host.requests[0]?.body));
   const actual = host.requests[1]?.body;
@@ -81,7 +81,7 @@ test("Anthropic keeps its cache marker on the original prefix, before the side q
   const main = await host.openSession({
     model: { provider: "anthropic", model: "claude-fable-5" },
   });
-  await main.send("main task");
+  await main.sendMessage("main task");
   await ask(main.id, "side question", new AbortController().signal);
   const mainBody = JSON.stringify(host.requests[0]?.body);
   const sideBody = JSON.stringify(host.requests[1]?.body);
@@ -104,7 +104,7 @@ test("OpenAI keeps the session cache key and the original input prefix", async (
   const main = await host.openSession({
     model: { provider: "openai", model: "gpt-4.1" },
   });
-  await main.send("main task");
+  await main.sendMessage("main task");
   await ask(main.id, "side question", new AbortController().signal);
   const before = JSON.parse(JSON.stringify(host.requests[0]?.body));
   const side = JSON.parse(JSON.stringify(host.requests[1]?.body));
@@ -126,7 +126,7 @@ test("cancelling a side request leaves the main stream running", async () => {
   });
   const main = await host.openSession();
   const mainController = new AbortController();
-  const running = main.send("main task", { signal: mainController.signal }).catch(() => {});
+  const running = main.sendMessage("main task", { signal: mainController.signal }).catch(() => {});
   await waitFor(() => host.requests.length === 1);
   const sideController = new AbortController();
   const side = ask(main.id, "side question", sideController.signal);
@@ -147,7 +147,7 @@ test("the latest round supplies the cache prefix and no side tool call is execut
       {
         name: "marker",
         session: (s) => {
-          s.tools.define({
+          s.tools.add({
             name: "mark",
             description: "Mark a real tool run.",
             concurrency: "serial",
@@ -168,9 +168,9 @@ test("the latest round supplies the cache prefix and no side tool call is execut
     ],
   });
   const main = await host.openSession();
-  await main.send("first task");
+  await main.sendMessage("first task");
   equal(calls, 1);
-  await main.send("second task");
+  await main.sendMessage("second task");
   const before = JSON.stringify(main.transcript.entries);
   const result = await ask(main.id, "side question", new AbortController().signal);
   equal(result.finishReason, "tool_calls");
@@ -199,7 +199,7 @@ test("closing a session cancels its side request", async () => {
     replies: [reply.text("main answer"), reply.stall("side working")],
   });
   const main = await host.openSession();
-  await main.send("main task");
+  await main.sendMessage("main task");
   const side = ask(main.id, "side question", new AbortController().signal);
   await waitFor(() => host.requests.length === 2);
   const rejected = rejects(side);
@@ -221,7 +221,7 @@ for (const width of [32, 100]) {
             ctx.provide("chat", {
               session: () => shown,
               show: async () => {},
-              onChange: () => () => {},
+              addChangeListener: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
               addReadOnly: () => () => {},
@@ -244,7 +244,7 @@ for (const width of [32, 100]) {
     const main = await host.openSession();
     shown = main.id;
     const controller = new AbortController();
-    const running = main.send("main task", { signal: controller.signal }).catch(() => {});
+    const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
     await waitFor(() => host.requests.length === 1);
     surface.tui.panes.split(() => ({
       draw: (canvas) => canvas.text(0, 0, "MAIN WORK"),
@@ -397,7 +397,7 @@ for (const width of [32, 100]) {
 /** Supply a real frame terminal to the otherwise headless test host. */
 function withTerminal(ctx: PluginContext, tui: Tui): PluginContext {
   // The fake chat service omits the style registrations supplied by Yuke's bundled chat.
-  tui.styles.set({
+  tui.styles.add({
     "chat.title": { fg: "accent", bold: true },
     "chat.hint": { fg: "accent" },
     "chat.meta": { dim: true },
@@ -417,7 +417,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     const submissions: string[] = [];
     const composer = new TextEditor({
       role: "composer",
-      submit: (state) => {
+      onSubmit: (state) => {
         submissions.push(state.text);
       },
     });
@@ -430,7 +430,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
             ctx.provide("chat", {
               session: () => shown,
               show: async () => {},
-              onChange: () => () => {},
+              addChangeListener: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
               addReadOnly: () => () => {},
@@ -451,7 +451,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     const main = await host.openSession();
     shown = main.id;
     const controller = new AbortController();
-    const running = main.send("main task", { signal: controller.signal }).catch(() => {});
+    const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
     await waitFor(() => host.requests.length === 1);
     new ChatCommands(composer, { commands: surface.tui.commands, signal: controller.signal, enabled: () => true });
     surface.tui.panes.split(() => ({
@@ -507,7 +507,7 @@ test("the installed manifest loads against Yuke's plugin loader", async () => {
           ctx.provide("chat", {
             session: () => undefined,
             show: async () => {},
-            onChange: () => () => {},
+            addChangeListener: () => () => {},
             addComposerView: () => () => {},
             setPresentation: () => () => {},
             addReadOnly: () => () => {},
@@ -521,7 +521,7 @@ test("the installed manifest loads against Yuke's plugin loader", async () => {
     replies: [reply.text("main answer"), reply.text("side answer")],
   });
   const main = await host.openSession();
-  await main.send("main task");
+  await main.sendMessage("main task");
   equal((await ask(main.id, "side question", new AbortController().signal)).text, "side answer");
 });
 
@@ -532,7 +532,7 @@ test("cancelling the main turn does not cancel a side request", async () => {
   });
   const main = await host.openSession();
   const mainController = new AbortController();
-  const running = main.send("main task", { signal: mainController.signal }).catch(() => {});
+  const running = main.sendMessage("main task", { signal: mainController.signal }).catch(() => {});
   await waitFor(() => host.requests.length === 1);
   const sideController = new AbortController();
   let settled = false;
@@ -552,7 +552,7 @@ test("cancelling the main turn does not cancel a side request", async () => {
 test("an empty side question sends no request", async () => {
   await using host = await createHost({ plugins: [plugin], replies: [reply.text("main answer")] });
   const main = await host.openSession();
-  await main.send("main task");
+  await main.sendMessage("main task");
   const error = await rejects(ask(main.id, "   ", new AbortController().signal));
   assert(error instanceof Error && error.message === "Enter a side question.");
   equal(host.requests.length, 1);
@@ -564,7 +564,7 @@ test("a compaction before the latest round becomes the side request's cached con
       {
         name: "compact",
         session: (s) => {
-          s.hook("round.before", () => ({
+          s.addHook("round.before", () => ({
             replace: { head: [{ user_text: "compacted history" }], keep: 1 },
           }));
         },
@@ -574,8 +574,8 @@ test("a compaction before the latest round becomes the side request's cached con
     replies: [reply.text("side answer")],
   });
   const main = await host.openSession();
-  await main.run("round.before", {
-    context: [{ user_text: "old input" }, { assistant_text: { text: "old answer" } }, { user_text: "new input" }],
+  await main.runHook("round.before", {
+    blocks: [{ user_text: "old input" }, { assistant_text: { text: "old answer" } }, { user_text: "new input" }],
   });
   await ask(main.id, "side question", new AbortController().signal);
   const messages = JSON.stringify(host.requests[0]?.messages);
@@ -599,7 +599,7 @@ for (const outcome of ["error", "cancel"]) {
             ctx.provide("chat", {
               session: () => shown,
               show: async () => {},
-              onChange: () => () => {},
+              addChangeListener: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
               addReadOnly: () => () => {},
@@ -622,7 +622,7 @@ for (const outcome of ["error", "cancel"]) {
     });
     const main = await host.openSession();
     shown = main.id;
-    await main.send("main task");
+    await main.sendMessage("main task");
     const before = JSON.stringify(main.transcript.entries);
     surface.tui.panes.split(() => ({ draw: (canvas) => canvas.text(0, 0, "MAIN READY") }));
     surface.tui.commands.run("btw:ask");
@@ -663,7 +663,7 @@ for (const outcome of ["error", "cancel"]) {
 test("closing the parent session discards its cached side-request handle", async () => {
   await using host = await createHost({ plugins: [plugin], replies: [reply.text("main answer")] });
   const main = await host.openSession();
-  await main.send("main task");
+  await main.sendMessage("main task");
   await main.close();
   const error = await rejects(ask(main.id, "a stale side question", new AbortController().signal));
   assert(
@@ -686,7 +686,7 @@ test("repeated side questions reuse the original round without accumulating side
     replies: [reply.text("main answer"), ...questions.map((question) => reply.text(`answer to ${question}`))],
   });
   const main = await host.openSession();
-  await main.send("main task");
+  await main.sendMessage("main task");
   const before = JSON.stringify(main.transcript.entries);
   for (const question of questions) {
     equal((await ask(main.id, question, new AbortController().signal)).text, `answer to ${question}`);

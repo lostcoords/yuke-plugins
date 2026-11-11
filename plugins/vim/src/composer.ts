@@ -116,7 +116,7 @@ export class ComposerEditor {
       return handled;
     };
     let keymapEvent: KeyEvent | undefined;
-    extension.onKey((event) => {
+    extension.addKeyHandler((event) => {
       keymapEvent = undefined;
       const stroke = strokeOf(event);
       if (this.tui.keys.pending() !== "" && stroke !== "esc" && stroke !== "ctrl+[") {
@@ -125,7 +125,7 @@ export class ComposerEditor {
       }
       return handleKey(event);
     }, "beforeKeymap");
-    extension.onKey((event) => {
+    extension.addKeyHandler((event) => {
       if (event === keymapEvent) {
         keymapEvent = undefined;
         if (handleKey(event)) return true;
@@ -133,7 +133,7 @@ export class ComposerEditor {
       // The keymap had its turn: outside Insert mode, keep native editing from changing the draft.
       return state.mode !== "insert" && editsNatively(event);
     });
-    extension.onChange((change) => {
+    extension.addChangeListener((change) => {
       if (state.muted) return;
       if (change.kind === "reset" || change.kind === "restore") {
         state.undo.length = 0;
@@ -163,12 +163,12 @@ export class ComposerEditor {
       state.expectedCaret = editor.caret;
       this.refresh(editor, state);
     });
-    extension.onMouse(() => {
+    extension.addMouseHandler(() => {
       this.cancel(editor);
       this.refresh(editor, state);
       return false;
     });
-    extension.onPaste(() => {
+    extension.addPasteHandler(() => {
       this.reset(state);
       return state.mode !== "insert";
     });
@@ -745,7 +745,7 @@ export class ComposerEditor {
     }
     if (operator === "y") {
       editor.caret = state.navigation.clamp(text, from);
-      if (state.register !== "_") this.tui.copy(value);
+      if (state.register !== "_") this.tui.clipboard.writeText(value);
       return;
     }
     if (operator === "d" || operator === "c") {
@@ -1436,7 +1436,7 @@ export class ComposerEditor {
     const field = new TextEditor({
       multiline: false,
       state: { text: state.query, spans: [], selection: { anchor: state.query.length, head: state.query.length } },
-      submit: (answer) => {
+      onSubmit: (answer) => {
         const current = this.states.has(editor) && this.tui.focused === field && editor.state === original;
         dialog.close();
         if (!current) return;

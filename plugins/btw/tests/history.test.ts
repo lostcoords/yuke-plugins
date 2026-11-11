@@ -14,7 +14,7 @@ test("saved exchanges survive a new history reader and contain only text and met
   const reopened = await new History(folder()).list("main-session");
   equal(reopened, { entries: [saved], warnings: [] });
   const stored = JSON.parse(
-    await readTextFile(`history/main-session/${saved.id}.json`, { baseDir: folder() }),
+    await readTextFile(`history/main-session/${saved.id}.json`, { cwd: folder() }),
   );
   equal(Object.keys(stored).sort(), [
     "answer",
@@ -54,7 +54,7 @@ test("history is newest first, independent of directory enumeration order", asyn
   older.createdAt = 1;
   newer.createdAt = 2;
   for (const item of [older, newer])
-    await writeTextFile(`history/main-session/${item.id}.json`, JSON.stringify(item), { baseDir: folder() });
+    await writeTextFile(`history/main-session/${item.id}.json`, JSON.stringify(item), { cwd: folder() });
   equal(
     (await history.list()).entries.map((item) => item.question),
     ["newer", "Which file?"],
@@ -77,23 +77,23 @@ test("corrupt and unsupported records are reported without hiding valid records 
     "invalid-time.json": JSON.stringify({ ...saved, id: "invalid-time", createdAt: 1e100 }),
   };
   for (const [path, text] of Object.entries(files))
-    await writeTextFile(`history/main-session/${path}`, text, { baseDir: folder() });
+    await writeTextFile(`history/main-session/${path}`, text, { cwd: folder() });
   const result = await history.list();
   equal(result.entries, [saved]);
   equal(result.warnings.length, 4);
   for (const [path, text] of Object.entries(files))
-    equal(await readTextFile(`history/main-session/${path}`, { baseDir: folder() }), text);
+    equal(await readTextFile(`history/main-session/${path}`, { cwd: folder() }), text);
 });
 
 test("deleting an exchange is repeatable and does not delete another session or unrelated plugin data", async () => {
   const history = new History(folder());
   const saved = await history.save(sample);
   const other = await history.save({ ...sample, sessionId: "another-session" });
-  await writeTextFile("settings.json", "keep", { baseDir: folder() });
+  await writeTextFile("settings.json", "keep", { cwd: folder() });
   await history.remove(saved);
   await history.remove(saved);
   equal((await history.list()).entries, [other]);
-  equal(await readTextFile("settings.json", { baseDir: folder() }), "keep");
+  equal(await readTextFile("settings.json", { cwd: folder() }), "keep");
 });
 
 test("invalid storage keys cannot escape the plugin history directory", async () => {
@@ -107,7 +107,7 @@ test("invalid storage keys cannot escape the plugin history directory", async ()
 
 test("a failed disk write is reported rather than pretending an answer was saved", async () => {
   await mkdir(`${folder()}/history`);
-  await writeTextFile("history/main-session", "not a directory", { baseDir: folder() });
+  await writeTextFile("history/main-session", "not a directory", { cwd: folder() });
   const error = await rejects(new History(folder()).save(sample));
   assert(error instanceof Error);
 });

@@ -63,7 +63,7 @@ export class Titles {
     this.models = new ModelList(ctx.dataDir, ctx.get("catalog"));
 
     this.#remove = [
-      ctx.on("session.update", (event) => {
+      ctx.addListener("session.update", (event) => {
         if (event.update.sessionUpdate !== "input_accepted" || this.#seen.has(event.sessionId)) return;
 
         const text = messageText(event.update.input);
@@ -73,7 +73,7 @@ export class Titles {
         void this.#start(event.sessionId, text, false, event.update.inputId);
       }),
 
-      ctx.on("session.closed", (event) => {
+      ctx.addListener("session.closed", (event) => {
         this.#running.get(event.sessionId)?.controller.abort();
         this.#seen.delete(event.sessionId);
       }),

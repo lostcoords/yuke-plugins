@@ -36,7 +36,7 @@ const SPAWN = { description: "Read the store", message: "Read.", background: fal
 /** A host with the plugin, the saved file `file`, and a record of each new session and tool. */
 async function opened(file?: string, answers = 0) {
   const dataDir = folder();
-  if (file !== undefined) await writeTextFile("settings.json", file, { baseDir: dataDir });
+  if (file !== undefined) await writeTextFile("settings.json", file, { cwd: dataDir });
   const created: SessionSettings[] = [];
   const tools = new Map<string, { readonly parameters: { readonly properties: Record<string, unknown> } }>();
   const notices: string[] = [];
@@ -64,9 +64,9 @@ async function opened(file?: string, answers = 0) {
         notify: { value: (_level: string, text: string) => notices.push(text) },
         tools: {
           value: {
-            define: (tool: never) => {
+            add: (tool: never) => {
               tools.set((tool as { name: string }).name, tool);
-              return s.tools.define(tool);
+              return s.tools.add(tool);
             },
           },
         },
@@ -182,12 +182,12 @@ test("a broken file gives a notice and no model argument, and a spawn names the 
 async function dialog(saved?: SavedModels) {
   const frame = createFrame({ width: 70, height: 16 });
   const dataDir = folder();
-  if (saved !== undefined) await writeTextFile("settings.json", file(saved), { baseDir: dataDir });
+  if (saved !== undefined) await writeTextFile("settings.json", file(saved), { cwd: dataDir });
   const failures: string[] = [];
   await openModelDialog(frame.surface("subagents").tui, new ModelList(dataDir, CATALOG), (text) => failures.push(text));
   frame.draw();
   const stored = async (): Promise<SavedModels> =>
-    JSON.parse(await readTextFile("settings.json", { baseDir: dataDir }));
+    JSON.parse(await readTextFile("settings.json", { cwd: dataDir }));
   return { frame, stored, failures };
 }
 

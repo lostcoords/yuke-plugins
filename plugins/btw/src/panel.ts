@@ -22,22 +22,22 @@ export function openPanel(
   let revision = 0;
   let inputRect = { column: 2, row: 0, width: 0, height: 1 };
 
-  const output = new TextView({ document: { key: "btw", items: [] } });
+  const output = new TextView({ document: { id: "btw", items: [] } });
 
   const showExchange = (question: string, text = ""): void => {
     const markdown = new Markdown(text);
     const heading = question === "" ? "/btw" : `/btw ${question}`;
 
     output.setDocument({
-      key: "btw",
+      id: "btw",
       items: [
         {
-          key: String(++revision),
+          id: String(++revision),
           sections: [
-            { key: "question", kind: "text", text: heading, render: (width) => questionRows(heading, width) },
-            { key: "gap", kind: "text", text: "", render: () => [{ segments: [], join: "\n" }] },
+            { id: "question", kind: "text", text: heading, render: (width) => questionRows(heading, width) },
+            { id: "gap", kind: "text", text: "", render: () => [{ segments: [], join: "\n" }] },
             {
-              key: "answer",
+              id: "answer",
               kind: "text",
               text,
               render: (width) =>
@@ -112,7 +112,7 @@ export function openPanel(
     placeholder: " Ask a side question…",
     appearance: { prompt: "› ", promptStyle: { dim: true } },
     multiline: true,
-    submit: (draft) => {
+    onSubmit: (draft) => {
       void sendQuestion(draft.text.trim());
     },
   });
@@ -164,7 +164,7 @@ export function openPanel(
   const overlay = tui.overlay(() => panelView(view), { place: panelRect });
 
   for (const widget of [editor, output]) {
-    widget.extend(overlay.signal).onKey((event) => {
+    widget.extend(overlay.signal).addKeyHandler((event) => {
       const key = strokeOf(event);
 
       switch (key) {
@@ -183,7 +183,7 @@ export function openPanel(
           break;
 
         case "ctrl+y":
-          if (answer.kind === "done" && answer.text !== "") tui.copy(answer.text);
+          if (answer.kind === "done" && answer.text !== "") tui.clipboard.writeText(answer.text);
           break;
 
         case "page_up":

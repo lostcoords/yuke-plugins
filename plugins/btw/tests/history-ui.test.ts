@@ -18,7 +18,7 @@ function screen(frame: FrameTest): string {
 
 async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
   const surface = frame.surface("btw");
-  surface.tui.styles.set({
+  surface.tui.styles.add({
     "chat.title": { fg: "accent", bold: true },
     "chat.hint": { fg: "accent" },
     "chat.meta": { dim: true },
@@ -34,7 +34,7 @@ async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
           ctx.provide("chat", {
             session: () => shown,
             show: async () => {},
-            onChange: () => () => {},
+            addChangeListener: () => () => {},
             addComposerView: () => () => {},
             setPresentation: () => () => {},
             addReadOnly: () => () => {},
@@ -102,7 +102,7 @@ test("a tool-call response copies the same displayed answer before and after reo
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame, [reply.text("main answer"), reply.toolCall("mark", {})]);
   await using host = loaded.host;
-  await loaded.main.send("main task");
+  await loaded.main.sendMessage("main task");
 
   loaded.tui.commands.run("btw:ask");
   frame.paste("side question");
@@ -135,7 +135,7 @@ test("asking without a main round shows an info notice and sends no request", as
   frame.paste("side question");
   frame.key("enter");
   await waitFor(() => host.notices.length > 0);
-  equal(host.notices.map(({ level, message }) => ({ level, message })), [
+  equal(host.notices.map(({ level, text: message }) => ({ level, message })), [
     { level: "info", message: "Send a message in the main conversation before using /btw." },
   ]);
   equal(host.requests.length, 0);
@@ -192,7 +192,7 @@ test("a new question after browsing does not send saved questions or answers to 
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame, [reply.text("main answer"), reply.text("new side answer")]);
   await using host = loaded.host;
-  await loaded.main.send("main task");
+  await loaded.main.sendMessage("main task");
   await loaded.history.save({ ...record, sessionId: loaded.main.id });
   loaded.tui.commands.run("btw:ask");
   await waitFor(() => screen(frame).includes("earlier answer"));
@@ -289,15 +289,15 @@ test("storage failure preserves the answer and reports that it was not saved", a
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame, [reply.text("main answer"), reply.text("do not lose this answer")]);
   await using host = loaded.host;
-  await loaded.main.send("main task");
+  await loaded.main.sendMessage("main task");
   await mkdir(`${loaded.dataDir}/history`);
-  await writeTextFile(`history/${loaded.main.id}`, "not a directory", { baseDir: loaded.dataDir });
+  await writeTextFile(`history/${loaded.main.id}`, "not a directory", { cwd: loaded.dataDir });
   loaded.tui.commands.run("btw:ask");
   frame.draw();
   frame.paste("side question");
   frame.key("enter");
   await waitFor(() => screen(frame).includes("do not lose this answer"));
-  await waitFor(() => host.notices.some((notice) => notice.message.includes("was not saved")));
+  await waitFor(() => host.notices.some((notice) => notice.text.includes("was not saved")));
   frame.key("ctrl+y");
   equal(frame.copies, ["do not lose this answer"]);
 });
@@ -306,7 +306,7 @@ test("flat presentation preserves Markdown highlights and copying the original a
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame);
   await using host = loaded.host;
-  loaded.tui.styles.set({
+  loaded.tui.styles.add({
     "markdown.strong": { bold: true },
     "markdown.code": { fg: "warn" },
   });
@@ -363,7 +363,7 @@ test("an arriving answer preserves output focus and the next independent draft",
   using frame = createFrame({ width: 100, height: 30 });
   const loaded = await setup(frame, [reply.text("main answer"), reply.text("the new side answer")]);
   await using host = loaded.host;
-  await loaded.main.send("main task");
+  await loaded.main.sendMessage("main task");
 
   loaded.tui.commands.run("btw:ask");
   frame.draw();

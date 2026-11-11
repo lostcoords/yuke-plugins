@@ -53,7 +53,7 @@ export class ModelList {
   async read(): Promise<SavedModels> {
     let text: string;
     try {
-      text = await readTextFile("settings.json", { baseDir: this.#folder, fatal: true });
+      text = await readTextFile("settings.json", { cwd: this.#folder, fatal: true });
     } catch (error) {
       if (error instanceof FileSystemError && error.code === "ENOENT") return { models: [] };
       throw error;
@@ -63,7 +63,7 @@ export class ModelList {
 
   async write(saved: SavedModels): Promise<void> {
     await mkdir(this.#folder, { recursive: true, mode: 0o700 });
-    await writeTextFile("settings.json", `${JSON.stringify(saved, null, 2)}\n`, { baseDir: this.#folder });
+    await writeTextFile("settings.json", `${JSON.stringify(saved, null, 2)}\n`, { cwd: this.#folder });
   }
 
   /** The providers that are ready. */

@@ -23,7 +23,7 @@ export class RunLog {
   /** The runs of `parent` in the file. A missing file has none. */
   async read(parent: SessionId): Promise<readonly LoggedRun[]> {
     try {
-      const runs: unknown = JSON.parse(await readTextFile(`${parent}.json`, { baseDir: this.#folder, fatal: true }));
+      const runs: unknown = JSON.parse(await readTextFile(`${parent}.json`, { cwd: this.#folder, fatal: true }));
       if (!Array.isArray(runs)) throw new Error("the log of running subagents is not a list");
       return runs as readonly LoggedRun[];
     } catch (error) {
@@ -52,7 +52,7 @@ export class RunLog {
         const runs = change(await this.read(parent));
         await mkdir(this.#folder, { recursive: true, mode: 0o700 });
         if (runs.length === 0) await remove(`${this.#folder}/${parent}.json`).catch(ignoreMissing);
-        else await writeTextFile(`${parent}.json`, JSON.stringify(runs), { baseDir: this.#folder });
+        else await writeTextFile(`${parent}.json`, JSON.stringify(runs), { cwd: this.#folder });
       });
     return this.#writes;
   }

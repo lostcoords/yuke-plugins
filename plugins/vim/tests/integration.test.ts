@@ -13,7 +13,7 @@ test("Enter reaches the host keymap except when a replacement consumes it", () =
       sent.push(fixture.editor.state.text);
     },
   });
-  native.tui.keys.bind("enter", "send", { in: "composer" });
+  native.tui.keys.add("enter", "send", { in: "composer" });
   frame.key("esc enter");
   equal(sent, ["abc"]);
   frame.key("r enter");
@@ -52,7 +52,7 @@ test("the mode status follows the focused composer and disappears on unload", ()
   const modes = () =>
     observer.tui.status
       .list()
-      .filter((entry) => entry.key === "vim:mode")
+      .filter((entry) => entry.id === "vim:mode")
       .map((entry) => entry.text);
   equal(modes(), ["INSERT"]);
   frame.key("esc");
@@ -73,7 +73,7 @@ test("a native control shortcut can reset the draft without leaving Vim history 
     name: "clear",
     run: () => fixture.editor.reset({ text: "", spans: [], selection: { anchor: 0, head: 0 } }),
   });
-  native.tui.keys.bind("ctrl+c", "clear");
+  native.tui.keys.add("ctrl+c", "clear");
   frame.key("esc d w ctrl+c u");
   equal([fixture.editor.state.text, fixture.editor.caret], ["", 0]);
   frame.key("i X esc u");
@@ -96,7 +96,7 @@ test("native key sequences survive caret changes in Insert and Normal modes", ()
       name: "replace",
       run: () => fixture.editor.reset({ text: "host", spans: [], selection: { anchor: 0, head: 0 } }),
     });
-    native.tui.keys.bind("ctrl+k m", "replace", { in: "composer" });
+    native.tui.keys.add("ctrl+k m", "replace", { in: "composer" });
     frame.key(`${mode} ctrl+k`);
     fixture.editor.caret = 1;
     frame.key("m");
@@ -109,7 +109,7 @@ test("an unmatched native sequence continues as a Vim key in Normal mode", () =>
   using frame = fixture.frame;
   const native = frame.surface("native");
   native.tui.commands.add({ name: "unused", run() {} });
-  native.tui.keys.bind("ctrl+k m", "unused", { in: "composer" });
+  native.tui.keys.add("ctrl+k m", "unused", { in: "composer" });
   frame.key("esc ctrl+k x");
   equal([fixture.editor.state.text, fixture.editor.caret], ["bc", 0]);
   frame.key("u");
@@ -121,18 +121,18 @@ test("Escape cancels a native sequence and enters Normal mode", () => {
   using frame = fixture.frame;
   const native = frame.surface("native");
   native.tui.commands.add({ name: "unused", run() {} });
-  native.tui.keys.bind("ctrl+k m", "unused", { in: "composer" });
+  native.tui.keys.add("ctrl+k m", "unused", { in: "composer" });
   frame.key("ctrl+k esc x");
   equal([fixture.editor.state.text, fixture.editor.caret], ["bc", 0]);
 });
 
 function observeNextHandler(fixture: ReturnType<typeof composer>) {
   const keys: string[] = [];
-  fixture.editor.extend(fixture.surface.signal).onKey((event) => {
+  fixture.editor.extend(fixture.surface.signal).addKeyHandler((event) => {
     keys.push(strokeOf(event));
     return true;
   });
-  const mode = () => fixture.surface.tui.status.list().find((item) => item.key === "vim:mode")?.text;
+  const mode = () => fixture.surface.tui.status.list().find((item) => item.id === "vim:mode")?.text;
   return { keys, mode };
 }
 

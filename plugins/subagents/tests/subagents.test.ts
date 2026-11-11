@@ -1,7 +1,8 @@
 // The tools of the plugin on a test host: reports, follow-ups, stops, moves, questions, and the prompt of a subagent.
 
 import { mkdir, readTextFile, writeTextFile } from "yuke:fs";
-import type { PluginApply, PluginSession, QuestionAnswer, SessionContext, Sessions } from "yuke:plugins";
+import type { PluginApply, PluginSession, SessionContext, Sessions } from "yuke:plugins";
+import type { QuestionAnswer } from "yuke:protocol";
 import { createHost, equal, type Reply, reply, waitForSettled, test } from "yuke:test";
 import { apply, session } from "../src/index.ts";
 import type { LoggedRun } from "../src/run-log.ts";
@@ -46,11 +47,11 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   };
   const pluginSession: PluginSession = async (s) => {
     if (options.failChild === true && s.parent !== undefined) {
-      s.hook("prompt.build", () => {
+      s.addHook("prompt.build", () => {
         throw new Error("the hook failed");
       });
     }
-    s.tools.define({
+    s.tools.add({
       name: "gate",
       description: "Wait for the test.",
       concurrency: "parallel",
@@ -61,7 +62,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
         return "open";
       },
     });
-    s.tools.define({
+    s.tools.add({
       name: "ask",
       description: "Ask the user.",
       concurrency: "serial",
@@ -76,7 +77,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
     });
     if (s.parent === undefined && options.runs !== undefined) {
       await mkdir(`${dataDirectory}/running`, { recursive: true });
-      await writeTextFile(`${s.sessionId}.json`, JSON.stringify(options.runs), { baseDir: `${dataDirectory}/running` });
+      await writeTextFile(`${s.sessionId}.json`, JSON.stringify(options.runs), { cwd: `${dataDirectory}/running` });
     }
     const notify = options.notice;
     const overrides = {
@@ -392,7 +393,7 @@ test("two parallel spawns create two subagents", async () => {
   const { host, parent, list, openGate } = state;
   await using _host = host;
 
-  const sent = parent.send("Read the store.");
+  const sent = parent.sendMessage("Read the store.");
   await waitForSettled();
   openGate();
   await sent;
@@ -420,14 +421,14 @@ test("parallel runs share one view of the parent, and a later run opens another"
   await using _host = host;
   const viewsOfParent = (): number => opens.filter((open) => open.id === parent.id).length;
 
-  const sent = parent.send("Read the store.");
+  const sent = parent.sendMessage("Read the store.");
   await waitForSettled();
   openGate();
   await sent;
   await waitForSettled();
   equal(viewsOfParent(), 1);
 
-  await parent.send("Read it again.");
+  await parent.sendMessage("Read it again.");
   await waitForSettled();
   equal(viewsOfParent(), 2);
 });
@@ -445,7 +446,7 @@ test("the view of the parent stays until its last subagent ends", async () => {
   ]);
   const { host, parent, handle, openGate, opens } = state;
   await using _host = host;
-  const sent = parent.send("Read the store.");
+  const sent = parent.sendMessage("Read the store.");
   await waitForSettled();
   const view = opens.find((open) => open.id === parent.id)?.signal;
   equal(handle.jobs().length, 1);
@@ -461,7 +462,7 @@ test("the view of the parent stays until its last subagent ends", async () => {
 /** The running subagents that the log file of `parent` holds. */
 async function logged(dataDir: string, parent: string): Promise<readonly string[]> {
   try {
-    const text = await readTextFile(`${parent}.json`, { baseDir: `${dataDir}/running` });
+    const text = await readTextFile(`${parent}.json`, { cwd: `${dataDir}/running` });
     return (JSON.parse(text) as { readonly id: string }[]).map((run) => run.id);
   } catch {
     return [];
@@ -501,10 +502,10 @@ test("a run from an earlier process gives a notice now, and the model reads it o
   const { host, parent } = state;
   await using _host = host;
 
-  await parent.send("What happened?");
+  await parent.sendMessage("What happened?");
   await waitForSettled();
   const told = host.requests[0]?.messages.at(-1)?.text ?? "";
-  await parent.send("And now?");
+  await parent.sendMessage("And now?");
   await waitForSettled();
 
   equal(notices, ["Read the store · interrupted"]);

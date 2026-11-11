@@ -16,7 +16,7 @@ for (const width of [32, 100]) {
             ctx.provide("chat", {
               session: () => undefined,
               show: async () => {},
-              onChange: () => () => {},
+              addChangeListener: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
               addReadOnly: () => () => {},
@@ -29,7 +29,7 @@ for (const width of [32, 100]) {
           name: "btw",
           uses: ["chat"],
           apply: (ctx) => {
-            surface.tui.styles.set({
+            surface.tui.styles.add({
               "chat.title": { fg: "accent", bold: true },
               "chat.hint": { fg: "accent" },
               "chat.meta": { dim: true },

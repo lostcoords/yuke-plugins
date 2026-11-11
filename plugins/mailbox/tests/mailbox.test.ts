@@ -193,7 +193,7 @@ test("child sessions have no mailbox and do not appear in discovery", async () =
       [state.target],
     );
 
-    await handle.sendMessage([{ user_text: "Work on the task." }]);
+    await handle.sendMessage({ content: [{ user_text: "Work on the task." }] });
     await handle.waitForIdle();
   } finally {
     controller.abort();
@@ -275,7 +275,7 @@ test("an endpoint with a broken answer is skipped without breaking discovery", a
     [state.target],
   );
 
-  assert(state.host.notices.some((notice) => notice.level === "debug" && notice.message.includes("skipped")));
+  assert(state.host.notices.some((notice) => notice.level === "debug" && notice.text.includes("skipped")));
 });
 
 test("during a reload the same session from two endpoints is one agent, and a send reaches it", async () => {
@@ -342,7 +342,7 @@ test("a message to a busy session waits for its running tool and reaches the nex
         apply,
         session(s) {
           session(s);
-          s.tools.define({
+          s.tools.add({
             name: "hold",
             description: "Wait for the test.",
             concurrency: "serial",
@@ -369,7 +369,7 @@ test("a message to a busy session waits for its running tool and reaches the nex
   const sender = await host.openSession();
   const target = (await list(recipient)).self;
 
-  const running = recipient.send("Start work.");
+  const running = recipient.sendMessage("Start work.");
   try {
     await entered.promise;
     equal((await send(sender, target, "Use the new API.")).isError, false);
@@ -402,7 +402,7 @@ test("mailbox tools stay deferred beside subagent tools and discovery works thro
   const second = await host.openSession();
   const target = (await list(second)).self;
 
-  await first.send("Find the other session.");
+  await first.sendMessage("Find the other session.");
   equal(host.requests.length, 3);
 
   const initial = host.requests[0]?.tools ?? [];
@@ -427,14 +427,14 @@ test("the coordination hint preserves existing prompt sections and appears once 
   const state = await opened([reply.text("First answer."), reply.text("Second answer.")]);
   await using host = state.host;
 
-  const built = await state.first.run("prompt.build", {
+  const built = await state.first.runHook("prompt.build", {
     sections: { base: "Keep the user's instructions.", project: "Work only on src/." },
   });
   equal(Object.keys(built.sections), ["base", "project", "mailbox"]);
   equal([built.sections.base, built.sections.project], ["Keep the user's instructions.", "Work only on src/."]);
 
-  await state.first.send("First turn.");
-  await state.first.send("Second turn.");
+  await state.first.sendMessage("First turn.");
+  await state.first.sendMessage("Second turn.");
 
   const count = (system: string, tag: string) => system.split(tag).length - 1;
   equal(

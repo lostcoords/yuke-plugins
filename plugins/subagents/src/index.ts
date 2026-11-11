@@ -1,5 +1,5 @@
-import type { JobReport, PluginContext, SessionContext, SessionHandle, SessionRow, Sessions } from "yuke:plugins";
-import type { InputId, SessionId, SessionSettings } from "yuke:protocol";
+import type { JobReport, PluginContext, SessionContext, SessionHandle, Sessions } from "yuke:plugins";
+import type { InputId, SessionId, SessionRow, SessionSettings } from "yuke:protocol";
 import type { ToolContext, ToolResult } from "yuke:tools";
 import type { Tui } from "yuke:tui";
 import type { ListEntry } from "./list.ts";
@@ -119,7 +119,7 @@ export async function session(s: SessionContext): Promise<undefined> {
   if (s.parent !== undefined) {
     // A pane can open a subagent of an earlier process, which has no label here.
     if (!subagents.has(s.sessionId)) subagents.set(s.sessionId, { parent: s.parent, label: undefined });
-    s.hook("prompt.build", (event) => ({ sections: { ...event.sections, subagent: SUBAGENT_PROMPT } }));
+    s.addHook("prompt.build", (event) => ({ sections: { ...event.sections, subagent: SUBAGENT_PROMPT } }));
     return;
   }
   // The tool text is fixed for the session, so the prompt cache holds. A new list reaches the next session.
@@ -132,7 +132,7 @@ export async function session(s: SessionContext): Promise<undefined> {
     busy.delete(s.sessionId);
   });
 
-  s.tools.define({
+  s.tools.add({
     name: "spawn_subagent",
     description: SPAWN_DESCRIPTION,
     concurrency: "parallel",
@@ -156,7 +156,7 @@ export async function session(s: SessionContext): Promise<undefined> {
     },
   });
 
-  s.tools.define({
+  s.tools.add({
     name: "message_subagent",
     description: MESSAGE_DESCRIPTION,
     concurrency: "parallel",
@@ -180,7 +180,7 @@ export async function session(s: SessionContext): Promise<undefined> {
         const model = row.session.model.model;
         return run(s, context, running, args.id, args.message, args.message, args.background, model);
       }
-      active.inputs.push(await active.handle.sendMessage([{ user_text: args.message }]));
+      active.inputs.push(await active.handle.sendMessage({ content: [{ user_text: args.message }] }));
       return {
         text: `Subagent ${args.id} still runs and has the message. ${WAIT_RULE}`,
         display: [{ kind: "markdown", text: "Message sent" }],
@@ -205,7 +205,7 @@ async function tellInterrupted(s: SessionContext): Promise<void> {
   }
   if (lost.length === 0) return;
   for (const run of lost) s.notify("warn", `${run.label} · interrupted`);
-  const remove = s.hook("input.before", async (event) => {
+  const remove = s.addHook("input.before", async (event) => {
     remove();
     await log.remove(
       s.sessionId,
@@ -350,7 +350,7 @@ async function work(
           if (handle.signal.aborted) return;
           handle.respond(
             update.interactionId,
-            answers === undefined ? { kind: "canceled" } : { kind: "questions", answers },
+            answers === undefined ? { kind: "cancelled" } : { kind: "questions", answers },
           );
         });
       },
@@ -360,7 +360,7 @@ async function work(
     const active: Running = {
       handle,
       parent,
-      inputs: [await handle.sendMessage([{ user_text: message }])],
+      inputs: [await handle.sendMessage({ content: [{ user_text: message }] })],
       label,
       model,
       started: tui?.now() ?? 0,

@@ -252,7 +252,7 @@ test("Escape takes ownership before the interrupt keymap and unload restores nat
       actions.push("interrupt");
     },
   });
-  native.tui.keys.bind("esc", "native:interrupt");
+  native.tui.keys.add("esc", "native:interrupt");
   frame.key("esc b");
   equal([fixture.editor.state.text, fixture.editor.caret], ["abc", 0]);
   equal(actions, []);

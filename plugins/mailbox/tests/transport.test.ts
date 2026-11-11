@@ -1,16 +1,16 @@
 import { connect } from "yuke:net";
-import { assert, equal, listen, rejects, waitForSettled, test } from "yuke:test";
+import { assert, equal, listenOnTemporarySocket, rejects, waitForSettled, test } from "yuke:test";
 import { readFrame, request, serve, writeFrame } from "../src/transport.ts";
 
 /** A short socket path that no listener holds. */
 function freePath(): string {
-  using listener = listen();
+  using listener = listenOnTemporarySocket();
   return listener.path;
 }
 
 test("a JSON frame survives split UTF-8 bytes, embedded newlines, and a large message", async () => {
   const controller = new AbortController();
-  using listener = listen();
+  using listener = listenOnTemporarySocket();
   const accepted = listener.accept();
   using client = await connect({ path: listener.path, signal: controller.signal });
   using peer = await accepted;
@@ -49,7 +49,7 @@ test("the request returns a server result and reports a handler failure without 
 });
 
 test("a truncated frame fails instead of delivering a partial message", async () => {
-  using listener = listen();
+  using listener = listenOnTemporarySocket();
   const accepted = listener.accept();
   const client = await connect({ path: listener.path });
   using peer = await accepted;
@@ -83,7 +83,7 @@ test("stopping the server closes accepted clients that have not sent a frame", a
 
 test("a request waits for a complete response frame and rejects a response without a result", async () => {
   const controller = new AbortController();
-  using listener = listen();
+  using listener = listenOnTemporarySocket();
   const accepted = listener.accept();
   const pending = request(listener.path, { method: "list" }, controller.signal);
   using peer = await accepted;
@@ -96,7 +96,7 @@ test("a request waits for a complete response frame and rejects a response witho
 
 test("cancelling a request stops a wait for a response with the abort reason", async () => {
   const controller = new AbortController();
-  using listener = listen();
+  using listener = listenOnTemporarySocket();
   const accepted = listener.accept();
   const pending = request(listener.path, { method: "list" }, controller.signal);
   using peer = await accepted;

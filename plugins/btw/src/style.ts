@@ -1,7 +1,7 @@
 import type { Rect, Size, Tui, View } from "yuke:tui";
 
 export function installStyles(tui: Tui): void {
-  tui.styles.set({
+  tui.styles.add({
     "btw.panel": { fg: "fg", bg: "bg" },
     "btw.title": { fg: "accent", bold: true },
     "btw.question": { inherits: "chat.meta" },

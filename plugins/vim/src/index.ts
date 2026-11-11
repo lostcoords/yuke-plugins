@@ -9,12 +9,12 @@ export function apply(ctx: PluginContext): (() => void) | undefined {
 
   const registers = new Registers();
   const composer = new ComposerEditor(ctx, tui, registers);
-  const stopWidgets = tui.widgets.watch((mount) => {
+  const stopWidgets = tui.widgets.addWatcher((mount) => {
     const editor = mount.widget;
     if (editor.kind !== "editor" || editor.role !== "composer") return;
     return composer.bind(editor, mount.signal);
   });
-  const stopFocus = tui.onFocusChange((change) => {
+  const stopFocus = tui.addFocusListener((change) => {
     if (change.previous instanceof TextEditor) composer.cancel(change.previous);
     composer.updateStatus();
   });

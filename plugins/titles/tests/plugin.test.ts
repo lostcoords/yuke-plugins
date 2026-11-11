@@ -18,7 +18,7 @@ test("the settings command saves a picked model and regenerate renames the focus
           ctx.provide("chat", {
             session: () => shown,
             show: async () => {},
-            onChange: () => () => {},
+            addChangeListener: () => () => {},
             addComposerView: () => () => {},
             setPresentation: () => () => {},
             addReadOnly: () => () => {},
@@ -46,7 +46,7 @@ test("the settings command saves a picked model and regenerate renames the focus
   const session = await host.openSession();
   shown = session.id;
   tui.panes.split(() => ({ draw: (canvas) => canvas.text(0, 0, "Main conversation") }));
-  await session.send("Fix login after the access token expires.");
+  await session.sendMessage("Fix login after the access token expires.");
   assert(sessions !== undefined);
   equal((await sessions.get(session.id)).session.title, "Fix login after the access token expires.");
   equal(host.requests.length, 1);
@@ -83,5 +83,5 @@ test("the settings command saves a picked model and regenerate renames the focus
   }
   equal((await sessions.get(session.id)).session.title, "Fix login refresh");
   equal(host.requests[1]?.messages, [{ role: "user", text: "Fix login after the access token expires." }]);
-  equal(host.notices.at(-1)?.message, "Session title: Fix login refresh");
+  equal(host.notices.at(-1)?.text, "Session title: Fix login refresh");
 });

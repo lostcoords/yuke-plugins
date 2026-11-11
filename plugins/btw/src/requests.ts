@@ -1,4 +1,5 @@
-import type { ModelReference, RoundBeforeEvent, SessionContext, SideRequestResult } from "yuke:plugins";
+import type { RoundBeforeEvent, SessionContext, SideRequestResult } from "yuke:plugins";
+import type { ModelReference } from "yuke:protocol";
 
 export const NO_ROUND = "Send a message in the main conversation before using /btw.";
 
@@ -20,8 +21,8 @@ export function session(context: SessionContext): () => void {
     });
   };
 
-  context.hook("round.before", remember);
-  context.hook("round.retry", remember);
+  context.addHook("round.before", remember);
+  context.addHook("round.retry", remember);
 
   return () => {
     rounds.delete(context.sessionId);

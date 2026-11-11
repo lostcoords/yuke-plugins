@@ -70,7 +70,7 @@ export async function openModelDialog(tui: Tui, list: ModelList, fail: (text: st
 
   const body: View = {
     focusable: true,
-    key(event) {
+    onKey(event) {
       const stroke = strokeOf(event);
       const down = stroke === "down";
       if (!down && stroke !== "up") return false;

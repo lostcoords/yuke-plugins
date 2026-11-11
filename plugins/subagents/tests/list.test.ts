@@ -211,7 +211,7 @@ test("a focus change leaves the selection, so a key in another pane does not sto
   equal(bold(state.rowsOf(state.parent.id)), [false]);
   equal(other.state.text, "x");
   equal(
-    state.surface.tui.status.list().some((item) => item.key.endsWith("subagents")),
+    state.surface.tui.status.list().some((item) => item.id.endsWith("subagents")),
     false,
   );
 });
@@ -235,7 +235,7 @@ test("the waiting row hides while a turn of the parent runs", async () => {
   using _frame = state.frame;
   await using _host = state.host;
 
-  void state.parent.send("Read the store.").catch(() => undefined);
+  void state.parent.sendMessage("Read the store.").catch(() => undefined);
   await waitForSettled();
 
   equal(state.rowsOf(state.parent.id).length, 1);
@@ -250,7 +250,7 @@ test("Down with no running subagent stays in the composer", async () => {
   state.frame.key("down");
 
   equal(
-    state.surface.tui.status.list().some((item) => item.key.endsWith("subagents")),
+    state.surface.tui.status.list().some((item) => item.id.endsWith("subagents")),
     false,
   );
 });
@@ -267,7 +267,7 @@ test("Esc leaves the selection and stops there, so the chat does not cancel the 
       cancels += 1;
     },
   });
-  state.surface.tui.keys.bind("esc", "cancel");
+  state.surface.tui.keys.add("esc", "cancel");
   await state.parent.call("spawn_subagent", SPAWN);
   await waitForSettled();
 
@@ -287,7 +287,7 @@ test("Down on the last row selects the list, and the keys move, leave, and open"
   await state.parent.call("spawn_subagent", { ...SPAWN, description: "Check the tests" });
   await waitForSettled();
   const parent = state.parent.id;
-  const hint = () => state.surface.tui.status.list().some((item) => item.key.endsWith("subagents"));
+  const hint = () => state.surface.tui.status.list().some((item) => item.id.endsWith("subagents"));
 
   const before = bold(state.rowsOf(parent));
   state.frame.key("down");
@@ -336,7 +336,7 @@ test("x stops the selected subagent, and the selection leaves with the last row"
   equal(state.rowsOf(state.parent.id), []);
   equal(state.held.jobs(), []);
   equal(
-    state.surface.tui.status.list().some((item) => item.key.endsWith("subagents")),
+    state.surface.tui.status.list().some((item) => item.id.endsWith("subagents")),
     false,
   );
   equal(state.composer.state.text, "");

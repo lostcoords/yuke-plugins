@@ -33,7 +33,7 @@ export function composer(text = "", caret = 0, spans: readonly EditorSpan[] = []
     role: "composer",
     appearance: { cursorShape: "bar" },
     state: { text, selection: { anchor: caret, head: caret }, spans },
-    submit: (state) => submitted.push(state),
+    onSubmit: (state) => submitted.push(state),
   });
   return { ...harness([editor]), editor, submitted };
 }

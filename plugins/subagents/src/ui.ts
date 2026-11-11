@@ -49,7 +49,7 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     }
     tui.requestFrame();
     // The times of the list move each second.
-    if (source.anyRunning()) tick = tui.after(1000, redraw);
+    if (source.anyRunning()) tick = tui.addTimer(1000, redraw);
   };
 
   chat.addReadOnly(source.readOnly);
@@ -65,7 +65,7 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
   });
 
   // A selection belongs to its pane, so a key in another pane never acts on it.
-  tui.onFocusChange(() => {
+  tui.addFocusListener(() => {
     if (selected !== undefined) leave();
   });
 
@@ -133,14 +133,14 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     }
   };
 
-  tui.widgets.watch((mount) => {
+  tui.widgets.addWatcher((mount) => {
     const editor = mount.widget;
     if (editor.kind !== "editor" || editor.role !== "composer") return undefined;
     const composer = editor as TextEditor;
     const extension = composer.extend(mount.signal);
-    extension.onKey(selectedKey, "beforeKeymap");
+    extension.addKeyHandler(selectedKey, "beforeKeymap");
     // This phase comes after the keymap, so a browse of older messages keeps its Down.
-    extension.onKey((event) => {
+    extension.addKeyHandler((event) => {
       if (strokeOf(event) !== "down") return false;
       const view = mount.pane?.view;
       const parent = view === undefined ? undefined : chat.session(view);

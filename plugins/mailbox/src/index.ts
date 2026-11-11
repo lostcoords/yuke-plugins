@@ -38,9 +38,9 @@ export function session(s: SessionContext): undefined {
 
   mailbox.register(s);
 
-  s.hook("prompt.build", (event) => ({ sections: { ...event.sections, mailbox: PROMPT } }));
+  s.addHook("prompt.build", (event) => ({ sections: { ...event.sections, mailbox: PROMPT } }));
 
-  s.tools.define({
+  s.tools.add({
     name: "mailbox_list_agents",
     description: LIST_DESCRIPTION,
     concurrency: "parallel",
@@ -51,7 +51,7 @@ export function session(s: SessionContext): undefined {
     },
   });
 
-  s.tools.define({
+  s.tools.add({
     name: "mailbox_send_message",
     description: SEND_DESCRIPTION,
     concurrency: "parallel",
