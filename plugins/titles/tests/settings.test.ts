@@ -1,7 +1,7 @@
 import { readTextFile, writeTextFile } from "yuke:fs";
 import type { Catalog } from "yuke:plugins";
 import type { ProviderInfo } from "yuke:protocol";
-import { createFrame, equal, folder, rejects, settled, test } from "yuke:test";
+import { createFrame, equal, folder, rejects, waitForSettled, test } from "yuke:test";
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, modelId, resolveModel, type SavedModels } from "../src/models.ts";
 
@@ -93,11 +93,11 @@ test("an empty dialog explains setup and an add saves the selected model and rea
     true,
   );
   frame.key("a");
-  await settled();
+  await waitForSettled();
   frame.key("enter");
-  await settled();
+  await waitForSettled();
   frame.key("enter");
-  await settled();
+  await waitForSettled();
 
   equal(await state.stored(), { models: [OPUS] });
   equal(state.failures, []);
@@ -112,7 +112,7 @@ test("arrow keys select without reordering, and explicit move actions reorder pr
   equal((await state.stored()).models, [OPUS, SONNET]);
   frame.key("down");
   frame.key("U");
-  await settled();
+  await waitForSettled();
   equal((await state.stored()).models, [SONNET, OPUS]);
   equal(
     rows(frame).some((row) => row.includes("primary")),
@@ -125,15 +125,15 @@ test("a duplicate add leaves one row, and remove can empty the list", async () =
   using frame = state.frame;
 
   frame.key("a");
-  await settled();
+  await waitForSettled();
   frame.key("enter");
-  await settled();
+  await waitForSettled();
   frame.key("enter");
-  await settled();
+  await waitForSettled();
   equal((await state.stored()).models, [OPUS]);
 
   frame.key("d");
-  await settled();
+  await waitForSettled();
   equal(await state.stored(), { models: [] });
   equal(
     rows(frame).some((row) => row.includes("No title models yet")),
@@ -147,7 +147,7 @@ test("adding a model without a ready provider explains how to finish setup", asy
   const failures: string[] = [];
   await openModelDialog(frame.surface("titles").tui, new ModelList(folder(), empty), (text) => failures.push(text));
   frame.key("a");
-  await settled();
+  await waitForSettled();
 
   equal(failures, ["No title models are available. Configure a provider in Yuke first."]);
   equal(

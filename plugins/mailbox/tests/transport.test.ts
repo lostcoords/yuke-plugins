@@ -1,5 +1,5 @@
 import { connect } from "yuke:net";
-import { assert, equal, listen, rejects, settled, test } from "yuke:test";
+import { assert, equal, listen, rejects, waitForSettled, test } from "yuke:test";
 import { readFrame, request, serve, writeFrame } from "../src/transport.ts";
 
 /** A short socket path that no listener holds. */
@@ -73,7 +73,7 @@ test("stopping the server closes accepted clients that have not sent a frame", a
     },
   );
   using client = await connect({ path });
-  await settled();
+  await waitForSettled();
   controller.abort();
   await close();
   const reader = client.readable.getReader();

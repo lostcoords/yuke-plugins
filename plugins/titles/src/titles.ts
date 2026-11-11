@@ -181,7 +181,7 @@ Use no quotes or punctuation at the end.
 Reply with ONLY the title, nothing else.`,
           prompt: text.slice(0, 4000),
           maxOutputTokens: 128,
-          abortSignal: AbortSignal.any([signal, attempt.signal]),
+          signal: AbortSignal.any([signal, attempt.signal]),
         });
 
         title = answer.text.replace(/\s+/gu, " ").trim();

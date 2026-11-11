@@ -2,7 +2,7 @@
 
 import type { ChatPane, ChatReadOnly, ChatService, ComposerView } from "yuke:chat";
 import type { PluginContext, ServiceOf, Services, Sessions } from "yuke:plugins";
-import { createFrame, createHost, equal, type Reply, reply, settled, test } from "yuke:test";
+import { createFrame, createHost, equal, type Reply, reply, waitForSettled, test } from "yuke:test";
 import { type Canvas, type Mount, TextEditor } from "yuke:tui";
 import { apply, session as pluginSession } from "../src/index.ts";
 import { type ListEntry, listRows } from "../src/list.ts";
@@ -138,14 +138,14 @@ test("the list shows a running subagent to the pane of its parent, and the row g
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const [child] = await state.children();
 
   equal(state.rowsOf(state.parent.id)[0]?.text.replace(/\s+/g, " ").startsWith("Read the store "), true);
   equal([state.rowsOf(child), state.rowsOf(undefined)], [[], []]);
 
   await state.parent.call("stop", { id: child });
-  await settled();
+  await waitForSettled();
   equal(state.rowsOf(state.parent.id), []);
 });
 
@@ -154,12 +154,12 @@ test("the waiting row shows while the parent is idle and a subagent runs", async
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const [child] = await state.children();
 
   equal(state.waiting(state.parent.id), ["Waiting for 1 subagent"]);
   await state.parent.call("stop", { id: child });
-  await settled();
+  await waitForSettled();
   equal(state.waiting(state.parent.id), []);
 });
 
@@ -169,7 +169,7 @@ test("a short place scrolls to the selected row, so a key never acts on a hidden
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
   await state.parent.call("spawn_subagent", { ...SPAWN, description: "Read the rest" });
-  await settled();
+  await waitForSettled();
 
   state.frame.key("down");
   state.frame.key("down");
@@ -183,12 +183,12 @@ test("a pane that shows another session leaves the selection, so x does not stop
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   state.frame.key("down");
   state.show("other");
   state.frame.key("x");
-  await settled();
+  await waitForSettled();
 
   equal([state.rowsOf(state.parent.id).length, state.composer.state.text], [1, "x"]);
 });
@@ -198,14 +198,14 @@ test("a focus change leaves the selection, so a key in another pane does not sto
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   state.frame.key("down");
   const other = new TextEditor({ role: "composer" });
   state.surface.tui.panes.split(() => other);
   state.frame.draw();
   state.frame.key("x");
-  await settled();
+  await waitForSettled();
 
   equal(state.rowsOf(state.parent.id).length, 1);
   equal(bold(state.rowsOf(state.parent.id)), [false]);
@@ -221,11 +221,11 @@ test("a subagent stays read-only after its session closes", async () => {
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const [child] = await state.children();
 
   await state.sessions().closeForAll(child as string);
-  await settled();
+  await waitForSettled();
 
   equal(state.readOnly()?.(child as string), { text: "Subagent: Read the store", back: state.parent.id });
 });
@@ -236,7 +236,7 @@ test("the waiting row hides while a turn of the parent runs", async () => {
   await using _host = state.host;
 
   void state.parent.send("Read the store.").catch(() => undefined);
-  await settled();
+  await waitForSettled();
 
   equal(state.rowsOf(state.parent.id).length, 1);
   equal(state.waiting(state.parent.id), []);
@@ -269,7 +269,7 @@ test("Esc leaves the selection and stops there, so the chat does not cancel the 
   });
   state.surface.tui.keys.bind("esc", "cancel");
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   state.frame.key("down");
   state.frame.key("esc");
@@ -285,7 +285,7 @@ test("Down on the last row selects the list, and the keys move, leave, and open"
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
   await state.parent.call("spawn_subagent", { ...SPAWN, description: "Check the tests" });
-  await settled();
+  await waitForSettled();
   const parent = state.parent.id;
   const hint = () => state.surface.tui.status.list().some((item) => item.key.endsWith("subagents"));
 
@@ -315,7 +315,7 @@ test("Down on the last row selects the list, and the keys move, leave, and open"
 
   state.frame.key("down");
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
   const [one, two] = await state.children();
   equal(state.showed.length, 1);
   equal([one, two].includes(state.showed[0]), true);
@@ -327,11 +327,11 @@ test("x stops the selected subagent, and the selection leaves with the last row"
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   state.frame.key("down");
   state.frame.key("x");
-  await settled();
+  await waitForSettled();
 
   equal(state.rowsOf(state.parent.id), []);
   equal(state.held.jobs(), []);
@@ -347,7 +347,7 @@ test("Esc leaves the selection and keeps the draft, and a typed character goes t
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const selectedNow = () => bold(state.rowsOf(state.parent.id))[0];
 
   state.frame.key("d");
@@ -372,7 +372,7 @@ test("Down moves the caret in a draft of many rows, and no running subagent leav
   const idle = state.composer.caret;
   state.composer.caret = 0;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   state.frame.key("down");
   const inDraft = bold(state.rowsOf(state.parent.id))[0];
   state.frame.key("down");
@@ -387,7 +387,7 @@ test("a subagent is read-only with its label and goes back to its parent, and a 
   using _frame = state.frame;
   await using _host = state.host;
   await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const [child] = await state.children();
 
   equal(state.readOnly()?.(child as string), { text: "Subagent: Read the store", back: state.parent.id });

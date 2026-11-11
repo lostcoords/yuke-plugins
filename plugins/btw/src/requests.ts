@@ -47,7 +47,7 @@ export async function ask(
       "",
       prompt,
     ].join("\n"),
-    abortSignal: AbortSignal.any([signal, round.signal]),
+    signal: AbortSignal.any([signal, round.signal]),
   });
 }
 

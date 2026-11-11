@@ -2,7 +2,7 @@
 
 import { mkdir, readTextFile, writeTextFile } from "yuke:fs";
 import type { PluginApply, PluginSession, QuestionAnswer, SessionContext, Sessions } from "yuke:plugins";
-import { createHost, equal, type Reply, reply, settled, test } from "yuke:test";
+import { createHost, equal, type Reply, reply, waitForSettled, test } from "yuke:test";
 import { apply, session } from "../src/index.ts";
 import type { LoggedRun } from "../src/run-log.ts";
 
@@ -118,7 +118,7 @@ test("a background subagent reports to the parent and stays out of the session l
   await using _host = host;
 
   const started = await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
   const roots = (await list.list()).sessions.map((row) => row.session.sessionId);
 
@@ -142,10 +142,10 @@ test("a follow-up by id reaches the same subagent, with its context", async () =
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
   await parent.call("message_subagent", { id, message: "And the indexes?", background: true });
-  await settled();
+  await waitForSettled();
 
   const child = host.requests.at(2)?.messages.map((message) => message.text);
   equal(child?.slice(0, 2), ["Read the store.", "Two tables."]);
@@ -175,14 +175,14 @@ test("a move of a foreground subagent answers the call, and the report reaches t
   const { host, parent, handle, openGate } = state;
   await using _host = host;
   const running = parent.call("spawn_subagent", { ...SPAWN, background: false });
-  await settled();
+  await waitForSettled();
 
   handle.moveJobsToBackground();
   const moved = await running;
   const id = await childOf(state);
   const jobs = handle.jobs().map((job) => [job.id, job.label]);
   openGate();
-  await settled();
+  await waitForSettled();
 
   equal(moved.display, [{ kind: "markdown", text: "Moved to the background" }]);
   equal(moved.text.startsWith(`Subagent ${id} runs in the background. Its final message`), true);
@@ -195,12 +195,12 @@ test("a message during the run joins the turn of the subagent, and the report co
   const { host, parent, openGate } = state;
   await using _host = host;
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
 
   const sent = await parent.call("message_subagent", { id, message: "And the indexes?", background: true });
   openGate();
-  await settled();
+  await waitForSettled();
 
   equal(sent.display, [{ kind: "markdown", text: "Message sent" }]);
   equal(newest(host), notification(id, "Three indexes."));
@@ -212,11 +212,11 @@ test("a stop by id ends the subagent and sends no report", async () => {
   const { host, parent, handle } = state;
   await using _host = host;
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
 
   const stopped = await parent.call("stop", { id });
-  await settled();
+  await waitForSettled();
 
   equal(stopped.text, `${id} stopped.`);
   equal(handle.jobs(), []);
@@ -233,7 +233,7 @@ test("a stop while the job starts ends the subagent, and the stop does not hang"
   const id = await childOf(state);
 
   const stopping = parent.call("stop", { id });
-  await settled();
+  await waitForSettled();
   started.resolve();
 
   equal((await stopping).text, `${id} stopped.`);
@@ -252,11 +252,11 @@ test("a stop closes the question of the subagent, and a late answer raises no fa
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const stopped = await parent.call("stop", { id: await childOf(state) });
-  await settled();
+  await waitForSettled();
   late.resolve([{ id: "go", values: ["Yes"] }]);
-  await settled();
+  await waitForSettled();
 
   equal([stopped.isError, signal?.aborted], [false, true]);
 });
@@ -267,7 +267,7 @@ test("a hook of the subagent that fails reports that the subagent did not start,
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   equal(newest(host), notification(await childOf(state), "The subagent did not start. A notice tells why.", "failed"));
 });
@@ -277,11 +277,11 @@ test("the close of the parent stops a subagent that runs", async () => {
   const { host, parent, list } = state;
   await using _host = host;
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
 
   await list.closeForAll(parent.id);
-  await settled();
+  await waitForSettled();
 
   equal((await list.get(id)).activity, "idle");
   equal(host.requests.length, 1);
@@ -293,10 +293,10 @@ test("a turn without a final message reports that, and not the message of an old
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
   await parent.call("message_subagent", { id, message: "And the indexes?", background: true });
-  await settled();
+  await waitForSettled();
 
   equal(newest(host), notification(id, "The subagent ended without a final message.", "completed", "And the indexes?"));
 });
@@ -307,12 +307,12 @@ test("a cancelled turn reports cancelled, not completed", async () => {
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
   const closed = new AbortController();
   const child = await list.open(id, { tail: 0, signal: closed.signal, onEvent() {} });
   child.cancel();
-  await settled();
+  await waitForSettled();
   closed.abort();
 
   equal(newest(host), notification(id, "A cancel ended the subagent before it finished.", "cancelled"));
@@ -323,12 +323,12 @@ test("a stop drops a message that waits, so no new turn starts", async () => {
   const { host, parent } = state;
   await using _host = host;
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const id = await childOf(state);
   await parent.call("message_subagent", { id, message: "And the indexes?", background: true });
 
   await parent.call("stop", { id });
-  await settled();
+  await waitForSettled();
 
   equal(host.requests.length, 1);
 });
@@ -341,7 +341,7 @@ test("a question of the subagent reaches the parent, and its answer returns", as
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   equal(
     host.questions.map((question) => question.sessionId),
@@ -358,7 +358,7 @@ test("a failed turn reports the failure, and a foreground call is an error", asy
   const result = await parent.call("spawn_subagent", { ...SPAWN, background: false });
   const id = await childOf(state);
   await parent.call("message_subagent", { id, message: "Try again.", background: true });
-  await settled();
+  await waitForSettled();
 
   equal(result.isError, true);
   equal(result.text.startsWith(`Subagent ${id}:`) && result.text.includes("overloaded"), true);
@@ -393,10 +393,10 @@ test("two parallel spawns create two subagents", async () => {
   await using _host = host;
 
   const sent = parent.send("Read the store.");
-  await settled();
+  await waitForSettled();
   openGate();
   await sent;
-  await settled();
+  await waitForSettled();
 
   equal((await list.list({ parent: parent.id })).sessions.length, 2);
 });
@@ -421,14 +421,14 @@ test("parallel runs share one view of the parent, and a later run opens another"
   const viewsOfParent = (): number => opens.filter((open) => open.id === parent.id).length;
 
   const sent = parent.send("Read the store.");
-  await settled();
+  await waitForSettled();
   openGate();
   await sent;
-  await settled();
+  await waitForSettled();
   equal(viewsOfParent(), 1);
 
   await parent.send("Read it again.");
-  await settled();
+  await waitForSettled();
   equal(viewsOfParent(), 2);
 });
 
@@ -446,13 +446,13 @@ test("the view of the parent stays until its last subagent ends", async () => {
   const { host, parent, handle, openGate, opens } = state;
   await using _host = host;
   const sent = parent.send("Read the store.");
-  await settled();
+  await waitForSettled();
   const view = opens.find((open) => open.id === parent.id)?.signal;
   equal(handle.jobs().length, 1);
   equal(view?.aborted, false);
 
   await handle.stopJob(handle.jobs()[0]?.id as string);
-  await settled();
+  await waitForSettled();
   equal(view?.aborted, true);
   openGate();
   await sent;
@@ -474,19 +474,19 @@ test("a subagent that ends or stops leaves the log, and a close of the parent ke
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
   const first = await childOf(state);
   const running = await logged(dataDir(), parent.id);
   await parent.call("stop", { id: first });
-  await settled();
+  await waitForSettled();
   const stopped = await logged(dataDir(), parent.id);
   await parent.call("message_subagent", { id: first, message: "Again.", background: true });
-  await settled();
+  await waitForSettled();
   const ended = await logged(dataDir(), parent.id);
   await parent.call("message_subagent", { id: first, message: "Once more.", background: true });
-  await settled();
+  await waitForSettled();
   await list.closeForAll(parent.id);
-  await settled();
+  await waitForSettled();
 
   equal([running, stopped, ended], [[first], [], []]);
   equal(await logged(dataDir(), parent.id), [first]);
@@ -502,10 +502,10 @@ test("a run from an earlier process gives a notice now, and the model reads it o
   await using _host = host;
 
   await parent.send("What happened?");
-  await settled();
+  await waitForSettled();
   const told = host.requests[0]?.messages.at(-1)?.text ?? "";
   await parent.send("And now?");
-  await settled();
+  await waitForSettled();
 
   equal(notices, ["Read the store · interrupted"]);
   equal(told.includes("Subagent lost-1 (Read the store) stopped when yuke closed"), true);
@@ -518,7 +518,7 @@ test("a damaged log gives one notice, and the file goes", async () => {
   const state = await opened([], { notice: (text) => notices.push(text), runs: {} as never });
   const { host, parent, dataDir } = state;
   await using _host = host;
-  await settled();
+  await waitForSettled();
 
   equal(notices.length, 1);
   equal(notices[0]?.includes("not a list"), true);
@@ -530,7 +530,7 @@ test("a subagent gets the prompt section and no subagent tools, and the parent g
   await using _host = host;
 
   await parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   const [child, turn] = host.requests;
   equal(child?.system?.includes("You are a subagent working on one task"), true);

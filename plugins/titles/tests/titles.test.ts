@@ -1,6 +1,6 @@
 import { writeTextFile } from "yuke:fs";
 import type { ServiceOf, Services, Sessions } from "yuke:plugins";
-import { assert, createHost, equal, type Reply, reply, settled, test } from "yuke:test";
+import { assert, createHost, equal, type Reply, reply, waitForSettled, test } from "yuke:test";
 import { firstMessage, Titles } from "../src/titles.ts";
 
 const PRIMARY = { model: "anthropic/claude-fable-5", reasoning: "default" };
@@ -230,7 +230,7 @@ test("a manual rename made during generation takes precedence over the generated
   await using host = state.host;
   const running = state.session.send("Fix login.");
   await waitFor(async () => (await state.title()) === "My manual title");
-  await settled();
+  await waitForSettled();
   equal(await state.title(), "My manual title");
   state.release();
   await running;

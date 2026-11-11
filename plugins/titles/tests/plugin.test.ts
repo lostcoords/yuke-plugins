@@ -1,6 +1,6 @@
 import { readTextFile } from "yuke:fs";
 import type { ServiceOf, Services, Sessions } from "yuke:plugins";
-import { assert, createFrame, createHost, equal, reply, settled, test } from "yuke:test";
+import { assert, createFrame, createHost, equal, reply, waitForSettled, test } from "yuke:test";
 import { apply } from "../src/index.ts";
 
 test("the settings command saves a picked model and regenerate renames the focused session without a reload", async () => {
@@ -50,7 +50,7 @@ test("the settings command saves a picked model and regenerate renames the focus
   equal(host.requests.length, 1);
 
   equal(tui.commands.run("titles:settings"), true);
-  await settled();
+  await waitForSettled();
   frame.draw();
   equal(
     frame.frame.cells.some((row) =>
@@ -62,13 +62,13 @@ test("the settings command saves a picked model and regenerate renames the focus
     true,
   );
   frame.key("a");
-  await settled();
+  await waitForSettled();
   frame.paste("anthropic/claude-fable-5");
   frame.key("enter");
-  await settled();
+  await waitForSettled();
   frame.paste("default");
   frame.key("enter");
-  await settled();
+  await waitForSettled();
   frame.key("esc");
   equal(JSON.parse(await readTextFile(`${dataDir}/settings.json`)), {
     models: [{ model: "anthropic/claude-fable-5", reasoning: "default" }],

@@ -3,7 +3,7 @@
 import { readTextFile, writeTextFile } from "yuke:fs";
 import type { Catalog, PluginApply, PluginContext, PluginSession, ServiceOf, Services, Sessions } from "yuke:plugins";
 import type { SessionSettings } from "yuke:protocol";
-import { createFrame, createHost, equal, folder, reply, settled, test } from "yuke:test";
+import { createFrame, createHost, equal, folder, reply, waitForSettled, test } from "yuke:test";
 import { apply, session } from "../src/index.ts";
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, type SavedModels } from "../src/models.ts";
@@ -155,7 +155,7 @@ test("a file that is not JSON names the file in the notice", async () => {
   const state = await opened("{");
   await using _host = state.host;
 
-  await settled();
+  await waitForSettled();
 
   equal(
     state.notices.some((text) => text.includes("settings.json is not JSON")),
@@ -168,7 +168,7 @@ test("a broken file gives a notice and no model argument, and a spawn names the 
   await using _host = state.host;
 
   const result = await state.parent.call("spawn_subagent", SPAWN);
-  await settled();
+  await waitForSettled();
 
   equal(argument(state), undefined);
   equal(
@@ -212,11 +212,11 @@ test("a add picks a model and a level, and the list saves it", async () => {
   using _frame = state.frame;
 
   state.frame.key("a");
-  await settled();
+  await waitForSettled();
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
 
   state.frame.draw();
   equal((await state.stored()).models, [OPUS_ENTRY]);
@@ -229,17 +229,17 @@ test("enter sets the default, the session row clears it, and d removes a model a
 
   state.frame.key("down");
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
   const set = (await state.stored()).default;
   state.frame.key("up");
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
   const cleared = (await state.stored()).default;
   state.frame.key("down");
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
   state.frame.key("d");
-  await settled();
+  await waitForSettled();
   const after = await state.stored();
 
   equal([set, cleared], ["anthropic/claude-opus:high", undefined]);
@@ -251,11 +251,11 @@ test("a add of a model that the list holds keeps one row", async () => {
   using _frame = state.frame;
 
   state.frame.key("a");
-  await settled();
+  await waitForSettled();
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
   state.frame.key("enter");
-  await settled();
+  await waitForSettled();
 
   equal((await state.stored()).models, [OPUS_ENTRY]);
 });
@@ -269,7 +269,7 @@ test("two quick keys build on each other, and the file holds both", async () => 
   state.frame.key("enter");
   state.frame.key("down");
   state.frame.key("d");
-  await settled();
+  await waitForSettled();
 
   equal(await state.stored(), { default: "anthropic/claude-opus:high", models: [OPUS_ENTRY] });
 });
@@ -279,7 +279,7 @@ test("d does nothing on the session row", async () => {
   using _frame = state.frame;
 
   state.frame.key("d");
-  await settled();
+  await waitForSettled();
 
   equal((await state.stored()).models, [OPUS_ENTRY]);
 });
