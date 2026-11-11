@@ -37,6 +37,9 @@ async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
             onChange: () => () => {},
             addComposerView: () => () => {},
             setPresentation: () => () => {},
+            addReadOnly: () => () => {},
+            setComposerFrame: () => () => {},
+            setEmptyView: () => () => {},
           });
         },
       },

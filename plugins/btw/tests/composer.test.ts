@@ -19,6 +19,9 @@ for (const width of [32, 100]) {
               onChange: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
+              addReadOnly: () => () => {},
+              setComposerFrame: () => () => {},
+              setEmptyView: () => () => {},
             });
           },
         },

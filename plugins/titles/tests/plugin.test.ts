@@ -22,6 +22,8 @@ test("the settings command saves a picked model and regenerate renames the focus
             addComposerView: () => () => {},
             setPresentation: () => () => {},
             addReadOnly: () => () => {},
+            setComposerFrame: () => () => {},
+            setEmptyView: () => () => {},
           });
         },
       },
