@@ -1,7 +1,7 @@
 import { type ChatReadOnly, type ChatService, composerRows } from "yuke:chat";
 import type { PluginContext } from "yuke:plugins";
 import type { SessionId } from "yuke:protocol";
-import { type KeyEvent, strokeOf, type TextEditor, type Tui, type View } from "yuke:tui";
+import { type KeyEvent, strokeOf, type Tui, type View } from "yuke:tui";
 import { type ListEntry, listRows, SHOWN } from "./list.ts";
 import { openModelDialog } from "./model-dialog.ts";
 import type { ModelList } from "./models.ts";
@@ -133,25 +133,21 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     }
   };
 
-  tui.widgets.addWatcher((mount) => {
-    const editor = mount.widget;
-    if (editor.kind !== "editor" || editor.role !== "composer") return undefined;
-    const composer = editor as TextEditor;
-    const extension = composer.extend(mount.signal);
+  chat.addPaneWatcher((pane, signal) => {
+    const composer = pane.composer;
+    const extension = composer.extend(signal);
     extension.addKeyHandler(selectedKey, "beforeKeymap");
     // This phase comes after the keymap, so a browse of older messages keeps its Down.
     extension.addKeyHandler((event) => {
       if (strokeOf(event) !== "down") return false;
-      const view = mount.pane?.view;
-      const parent = view === undefined ? undefined : chat.session(view);
-      if (view === undefined || parent === undefined || source.running(parent).length === 0) return false;
+      const parent = pane.session;
+      if (parent === undefined || source.running(parent).length === 0) return false;
       if (composer.rows.point(composer.caret)?.row !== composer.rows.count - 1) return false;
-      selected = { pane: view, parent, index: 0 };
+      selected = { pane: pane.view, parent, index: 0 };
       tui.status.set("subagents", { text: HINT, side: "left", order: 0 });
       tui.requestFrame();
       return true;
     });
-    return undefined;
   });
 
   return redraw;

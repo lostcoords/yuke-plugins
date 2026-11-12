@@ -35,6 +35,8 @@ async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
             session: () => shown,
             show: async () => {},
             addChangeListener: () => () => {},
+            addPaneWatcher: () => () => {},
+            addCompletionProvider: () => () => {},
             addComposerView: () => () => {},
             setPresentation: () => () => {},
             addReadOnly: () => () => {},
@@ -266,7 +268,7 @@ test("history deletion requires explicit confirmation and respects the session s
   equal(host.requests.length, 0);
 });
 
-test("a narrow confirmation rejects lowercase input and Ctrl+C returns to history", async () => {
+test("a narrow confirmation rejects lowercase input and Esc returns to history", async () => {
   using frame = createFrame({ width: 32, height: 30 });
   const loaded = await setup(frame);
   await using host = loaded.host;
@@ -280,7 +282,7 @@ test("a narrow confirmation rejects lowercase input and Ctrl+C returns to histor
   assert(screen(frame).includes("Delete 1 saved"));
   equal((await loaded.history.list()).entries.length, 1);
 
-  frame.key("ctrl+c");
+  frame.key("esc");
   assert(!screen(frame).includes("Type DELETE"));
   assert(screen(frame).includes("btw history"));
 });

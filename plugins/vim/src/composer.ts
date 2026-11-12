@@ -1433,14 +1433,14 @@ export class ComposerEditor {
     const register = state.register;
     const count = (state.leading || 1) * (state.count || 1);
     this.reset(state);
-    const field = new TextEditor({
-      multiline: false,
-      state: { text: state.query, spans: [], selection: { anchor: state.query.length, head: state.query.length } },
-      onSubmit: (answer) => {
-        const current = this.states.has(editor) && this.tui.focused === field && editor.state === original;
-        dialog.close();
-        if (!current) return;
-        if (answer.text !== "") state.query = answer.text;
+    // A draft that changed while the prompt was open takes no search.
+    void this.tui.input({
+      title: "Search draft (literal, case-sensitive)",
+      text: state.query,
+      signal: state.signal,
+      onSubmit: (text) => {
+        if (!this.states.has(editor) || editor.state !== original) return;
+        if (text !== "") state.query = text;
         state.searchForward = forward;
         state.searchWhole = false;
         state.operator = operator;
@@ -1448,12 +1448,6 @@ export class ComposerEditor {
         this.complete(editor, state, "n", count);
         this.refresh(editor, state);
       },
-    });
-    const dialog = this.tui.dialog({
-      title: () => "Search draft (literal, case-sensitive)",
-      body: field,
-      rows: 5,
-      signal: state.signal,
     });
   }
 }

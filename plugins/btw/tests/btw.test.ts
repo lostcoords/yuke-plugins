@@ -1,4 +1,4 @@
-import { ChatCommands } from "yuke:chat";
+import { ChatCompletions, slashCompletions } from "yuke:chat";
 import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
 import { assert, createFrame, createHost, equal, type FrameTest, rejects, reply, test } from "yuke:test";
 import { TextEditor, type Tui } from "yuke:tui";
@@ -222,6 +222,8 @@ for (const width of [32, 100]) {
               session: () => shown,
               show: async () => {},
               addChangeListener: () => () => {},
+              addPaneWatcher: () => () => {},
+              addCompletionProvider: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
               addReadOnly: () => () => {},
@@ -431,6 +433,8 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
               session: () => shown,
               show: async () => {},
               addChangeListener: () => () => {},
+              addPaneWatcher: () => () => {},
+              addCompletionProvider: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
               addReadOnly: () => () => {},
@@ -453,7 +457,16 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     const controller = new AbortController();
     const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
     await waitFor(() => host.requests.length === 1);
-    new ChatCommands(composer, { commands: surface.tui.commands, signal: controller.signal, enabled: () => true });
+    new ChatCompletions(composer, {
+      providers: () => [slashCompletions(surface.tui.commands)],
+      cwd: () => "/",
+      signal: controller.signal,
+      enabled: () => true,
+      onChange: () => {},
+      onError: (error) => {
+        throw error;
+      },
+    });
     surface.tui.panes.split(() => ({
       initialFocus: composer,
       draw() {},
@@ -508,6 +521,8 @@ test("the installed manifest loads against Yuke's plugin loader", async () => {
             session: () => undefined,
             show: async () => {},
             addChangeListener: () => () => {},
+            addPaneWatcher: () => () => {},
+            addCompletionProvider: () => () => {},
             addComposerView: () => () => {},
             setPresentation: () => () => {},
             addReadOnly: () => () => {},
@@ -604,6 +619,8 @@ for (const outcome of ["error", "cancel"]) {
               session: () => shown,
               show: async () => {},
               addChangeListener: () => () => {},
+              addPaneWatcher: () => () => {},
+              addCompletionProvider: () => () => {},
               addComposerView: () => () => {},
               setPresentation: () => () => {},
               addReadOnly: () => () => {},

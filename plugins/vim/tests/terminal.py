@@ -36,7 +36,7 @@ export function apply(ctx) {
   const tui = ctx.get("tui");
   if (tui === undefined) return;
   let recorded = false;
-  tui.widgets.watch((mount) => {
+  tui.widgets.addWatcher((mount) => {
     if (recorded || mount.widget.kind !== "editor" || mount.widget.role !== "composer") return;
     recorded = true;
     void writeTextFile(READY, "mounted\\n", { append: true }).catch((error) => ctx.notify("error", String(error)));

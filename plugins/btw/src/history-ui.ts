@@ -1,5 +1,5 @@
 import type { PluginContext } from "yuke:plugins";
-import { Picker, TextEditor, type Tui } from "yuke:tui";
+import { Picker, type Tui } from "yuke:tui";
 
 import type { History, HistoryEntry } from "./history.ts";
 
@@ -58,14 +58,14 @@ export function browseHistory(
         label: "delete",
         when: () => picker.selected !== undefined,
         run: () => {
-          if (picker.selected !== undefined) remove([picker.selected]);
+          if (picker.selected !== undefined) void remove([picker.selected]);
         },
       },
       {
         key: "ctrl+x",
         label: "clear",
         when: () => entries !== undefined && entries.length > 0,
-        run: () => remove(entries ?? []),
+        run: () => void remove(entries ?? []),
       },
       { key: "ctrl+c", label: "close", run: () => dialog.close() },
     ],
@@ -97,12 +97,19 @@ export function browseHistory(
     }
   };
 
-  const remove = (targets: readonly HistoryEntry[]): void => {
+  const remove = async (targets: readonly HistoryEntry[]): Promise<void> => {
     if (targets.length === 0) return;
     const scope = allSessions ? "across sessions" : "from this session";
-    confirmDelete(tui, `Delete ${targets.length} saved answer(s) ${scope}?`, dialog.signal, () => {
-      void deleteEntries(targets);
+    // A deletion asks for a typed word, so a stray Enter deletes nothing.
+    const typed = await tui.input({
+      title: `Delete ${targets.length} saved answer(s) ${scope}?`,
+      placeholder: "Type DELETE to confirm",
+      signal: dialog.signal,
+      onSubmit: (text) => {
+        if (text !== "DELETE") throw new Error("type DELETE to confirm");
+      },
     });
+    if (typed !== undefined) await deleteEntries(targets);
   };
 
   const deleteEntries = async (targets: readonly HistoryEntry[]): Promise<void> => {
@@ -119,24 +126,3 @@ export function browseHistory(
   void load();
 }
 
-function confirmDelete(tui: Tui, title: string, signal: AbortSignal, confirm: () => void): void {
-  const input = new TextEditor({ multiline: false, placeholder: "Type DELETE to confirm" });
-  const dialog = tui.dialog({
-    title: () => title,
-    body: input,
-    rows: 3,
-    signal,
-    keys: [
-      {
-        key: "enter",
-        label: "confirm",
-        when: () => input.state.text === "DELETE",
-        run: () => {
-          dialog.close();
-          confirm();
-        },
-      },
-      { key: "ctrl+c", label: "keep", run: () => dialog.close() },
-    ],
-  });
-}

@@ -51,7 +51,12 @@ async function shown(replies: readonly Reply[]) {
   const showed: string[] = [];
   let readOnly: ((session: string) => ChatReadOnly | undefined) | undefined;
   let session: string | undefined;
+  const watchers: ((pane: ChatPane, signal: AbortSignal) => void)[] = [];
   const chat = {
+    addPaneWatcher: (watch: (pane: ChatPane, signal: AbortSignal) => void) => {
+      watchers.push(watch);
+      return () => {};
+    },
     addComposerView: (place: string, create: Create) => {
       (place === "below" ? below : above).push(create);
       return () => {};
@@ -86,6 +91,17 @@ async function shown(replies: readonly Reply[]) {
   });
   const composer = new TextEditor({ role: "composer" });
   surface.tui.panes.split(() => composer);
+  // The pane of the composer, as the chat gives it to a watcher: its session is the one that it shows now.
+  const pane = {
+    view: composer,
+    composer,
+    get session() {
+      return session as never;
+    },
+    running: false,
+    transcript: {} as never,
+  };
+  for (const watch of watchers) watch(pane, new AbortController().signal);
   const parent = await host.openSession();
   session = parent.id;
   const held = await (sessions as unknown as Sessions).open(parent.id, { tail: 0, onEvent() {} });
@@ -94,7 +110,7 @@ async function shown(replies: readonly Reply[]) {
   const drawn = (create: Create | undefined, id: string | undefined, height?: number) => {
     const rows: Row[] = [];
     const mount = { signal: new AbortController().signal, close() {} };
-    const view = create?.(mount, { session: id as never, view: composer, running: false, transcript: {} as never });
+    const view = create?.(mount, { session: id as never, view: composer, composer, running: false, transcript: {} as never });
     const canvas = {
       width: 60,
       height: height ?? view?.heightFor(60) ?? 0,
