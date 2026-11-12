@@ -181,7 +181,7 @@ def report(session):
         update = update_of(message)
         return (
             message.get('params', {}).get('sessionId') == session
-            and update.get('sessionUpdate') == 'input_accepted'
+            and update.get('sessionUpdate') == 'inputAccepted'
             and update['input']['kind'] == 'notification'
         )
 
@@ -189,14 +189,7 @@ def report(session):
 
 
 def new_parent(client, cwd):
-    settings = {
-        'maxOutputTokens': None,
-        'reasoning': {'thinking': None, 'effort': None},
-        'temperature': None,
-        'topP': None,
-        'toolChoice': 'auto',
-        'outputSchema': None,
-    }
+    settings = {'reasoning': {}, 'toolChoice': 'auto'}
     settings = {'model': {'provider': 'local', 'model': 'small'}, 'settings': settings, 'cwd': str(cwd)}
     return client.call('session/new', settings)['sessionId']
 
@@ -206,7 +199,7 @@ def children(client, parent):
 
 
 def send(client, session, value):
-    return client.call('session/input', {'sessionId': session, 'content': [{'user_text': value}]})
+    return client.call('session/input', {'sessionId': session, 'content': [{'kind': 'userText', 'text': value}]})
 
 
 def background_flow(client, model, cwd):
@@ -234,8 +227,8 @@ def background_flow(client, model, cwd):
     ended = report(parent)
     first = client.until('the first report', ended)
     client.until('the parent idle', idle(parent))
-    shown = update_of(first)['input']['content'][0]['user_text']
-    read = update_of(first)['input']['modelContent'][0]['user_text']
+    shown = update_of(first)['input']['content'][0]['text']
+    read = update_of(first)['input']['modelContent'][0]['text']
     assert shown == 'Read the store · completed', shown
     assert read == (
         f'<system_notification plugin="subagents">{item["id"]} Read the store: completed.\nTwo tables.</system_notification>'
@@ -253,7 +246,7 @@ def background_flow(client, model, cwd):
     send(client, parent, 'And the indexes?')
     second = client.until('the second report', ended)
     client.until('the parent idle', idle(parent))
-    assert 'Three indexes.' in update_of(second)['input']['modelContent'][0]['user_text'], second
+    assert 'Three indexes.' in update_of(second)['input']['modelContent'][0]['text'], second
     assert children(client, parent) == [item['id']]
     # The default of settings.json gives the subagent the model `big`, and the parent keeps `small`.
     used = {('child' if 'You are a subagent working' in json.dumps(body.get('system')) else 'parent', body['model']) for body in model.requests}
@@ -289,7 +282,7 @@ def question_flow(client, model, cwd):
     asked = client.until(
         'a question on the parent',
         lambda message: message.get('params', {}).get('sessionId') == parent
-        and update_of(message).get('sessionUpdate') == 'interaction_requested',
+        and update_of(message).get('sessionUpdate') == 'interactionRequested',
     )
     update = update_of(asked)
     assert update['source'] == 'subagents', update
@@ -303,7 +296,7 @@ def question_flow(client, model, cwd):
     )
     done = client.until('the report', report(parent))
     client.until('the parent idle', idle(parent))
-    assert 'It said yes.' in update_of(done)['input']['modelContent'][0]['user_text'], done
+    assert 'It said yes.' in update_of(done)['input']['modelContent'][0]['text'], done
     client.call('session/close', {'sessionId': parent})
 
 
@@ -353,7 +346,7 @@ def restart_flow(env, work, model):
             'the notice of the interrupted subagent',
             lambda message: message.get('method') == 'notice' and 'interrupted' in json.dumps(message),
         )
-        assert notice['params']['message'] == 'Read the store · interrupted', notice
+        assert notice['params']['text'] == 'Read the store · interrupted', notice
         assert model.requests[-1:] and 'stopped when yuke closed' not in json.dumps(model.requests[-1]['messages'][-1])
         before = len(model.requests)
         model.parent.extend([text('I see.'), text('Noted again.')])

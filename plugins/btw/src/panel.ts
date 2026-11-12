@@ -1,4 +1,5 @@
-import type { PluginContext, SideRequestResult } from "yuke:plugins";
+import type { TextAnswer } from "yuke:ai";
+import type { PluginContext } from "yuke:plugins";
 import { Markdown, strokeOf, TextEditor, type TextRow, TextView, type Tui, type View, wrap } from "yuke:tui";
 
 import type { History, HistoryEntry } from "./history.ts";
@@ -73,7 +74,7 @@ export function openPanel(
     editor.reset({ text: "", spans: [], selection: { anchor: 0, head: 0 } });
     showExchange(question);
 
-    let result: SideRequestResult;
+    let result: TextAnswer;
     try {
       result = await ask(sessionId, question, overlay.signal);
     } catch (error) {
@@ -186,9 +187,9 @@ export function openPanel(
           if (answer.kind === "done" && answer.text !== "") tui.clipboard.writeText(answer.text);
           break;
 
-        case "page_up":
-        case "page_down": {
-          const direction = key === "page_up" ? -1 : 1;
+        case "pageup":
+        case "pagedown": {
+          const direction = key === "pageup" ? -1 : 1;
           output.scroll.scrollBy(direction * Math.max(1, output.scroll.state.height - 1));
           break;
         }

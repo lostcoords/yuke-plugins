@@ -9,7 +9,7 @@ function messageText(input: Pick<Frozen<Input>, "kind" | "source" | "content">):
   if (input.kind !== "message" || input.source.kind !== "user") return undefined;
 
   const text = input.content
-    .flatMap((block) => ("user_text" in block ? [block.user_text] : []))
+    .flatMap((block) => (block.kind === "userText" ? [block.text] : []))
     .join("\n")
     .trim();
 
@@ -64,7 +64,7 @@ export class Titles {
 
     this.#remove = [
       ctx.addListener("session.update", (event) => {
-        if (event.update.sessionUpdate !== "input_accepted" || this.#seen.has(event.sessionId)) return;
+        if (event.update.sessionUpdate !== "inputAccepted" || this.#seen.has(event.sessionId)) return;
 
         const text = messageText(event.update.input);
         if (text === undefined) return;
@@ -135,11 +135,11 @@ export class Titles {
     }
 
     const row = await this.#sessions.get(id);
-    const previous = row.session.title ?? undefined;
+    const previous = row.session.title;
 
     if (!manual) {
-      if (row.session.parent !== undefined && row.session.parent !== null) return;
-      if (row.session.forkOf !== undefined && row.session.forkOf !== null) return;
+      if (row.session.parent !== undefined) return;
+      if (row.session.forkOf !== undefined) return;
 
       const initial = Array.from(text.replace(/\s+/gu, " ").trim()).slice(0, 200).join("").trimEnd();
       if (previous !== undefined && previous !== initial) return;
@@ -201,7 +201,7 @@ Reply with ONLY the title, nothing else.`,
 
       // A manual rename during the request takes precedence over the generated title.
       const current = await this.#sessions.get(id);
-      if ((current.session.title ?? undefined) !== previous) {
+      if (current.session.title !== previous) {
         if (manual) this.#ctx.notify("info", "The session title changed while generating. Your title stays.");
         return;
       }

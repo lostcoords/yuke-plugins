@@ -1,4 +1,5 @@
-import type { RoundBeforeEvent, SessionContext, SideRequestResult } from "yuke:plugins";
+import type { TextAnswer } from "yuke:ai";
+import type { RoundBeforeEvent, SessionContext } from "yuke:plugins";
 import type { ModelReference } from "yuke:protocol";
 
 export const NO_ROUND = "Send a message in the main conversation before using /btw.";
@@ -34,7 +35,7 @@ export async function ask(
   sessionId: string,
   question: string,
   signal: AbortSignal,
-): Promise<SideRequestResult> {
+): Promise<TextAnswer> {
   const round = rounds.get(sessionId);
   if (round === undefined) throw new Error(NO_ROUND);
 

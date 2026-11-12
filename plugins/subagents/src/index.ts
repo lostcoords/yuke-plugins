@@ -180,7 +180,7 @@ export async function session(s: SessionContext): Promise<undefined> {
         const model = row.session.model.model;
         return run(s, context, running, args.id, args.message, args.message, args.background, model);
       }
-      active.inputs.push(await active.handle.sendMessage({ content: [{ user_text: args.message }] }));
+      active.inputs.push(await active.handle.sendMessage({ content: [{ kind: "userText", text: args.message }] }));
       return {
         text: `Subagent ${args.id} still runs and has the message. ${WAIT_RULE}`,
         display: [{ kind: "markdown", text: "Message sent" }],
@@ -216,7 +216,7 @@ async function tellInterrupted(s: SessionContext): Promise<void> {
         `Subagent ${run.id} (${run.label}) stopped when yuke closed, and it has no report. Use message_subagent to continue it, or start the work again.`,
     );
     const text = `<system_notification plugin="subagents">${lines.join("\n")}</system_notification>`;
-    return { replace: { blocks: [{ user_text: text }, ...event.blocks] } };
+    return { replace: { blocks: [{ kind: "userText", text }, ...event.blocks] } };
   });
 }
 
@@ -342,7 +342,7 @@ async function work(
       tail: 0,
       signal: ended.signal,
       onEvent(event) {
-        if ("snapshot" in event || event.update.sessionUpdate !== "interaction_requested") return;
+        if ("snapshot" in event || event.update.sessionUpdate !== "interactionRequested") return;
         const update = event.update;
         // A subagent has no user, so the parent asks its user.
         void s.ask({ questions: update.request.questions }, { signal: ended.signal }).then((answers) => {
@@ -360,7 +360,7 @@ async function work(
     const active: Running = {
       handle,
       parent,
-      inputs: [await handle.sendMessage({ content: [{ user_text: message }] })],
+      inputs: [await handle.sendMessage({ content: [{ kind: "userText", text: message }] })],
       label,
       model,
       started: tui?.now() ?? 0,
@@ -402,14 +402,14 @@ async function reportOf(id: SessionId, before: number): Promise<JobReport> {
   // A failed hook leaves the input pending and saves no commit.
   if (commits.length === 0) return { status: "failed", text: "The subagent did not start. A notice tells why." };
   const end = commits.at(-1)?.end;
-  const failure = end !== null && end !== undefined && "failed" in end ? end.failed : undefined;
+  const failure = end?.kind === "failed" ? end.error : undefined;
   const texts = commits.map((commit) =>
-    commit.blocks.flatMap((block) => ("assistant_text" in block ? [block.assistant_text.text] : [])).join(""),
+    commit.blocks.flatMap((block) => (block.kind === "assistantText" ? [block.text] : [])).join(""),
   );
   const text = texts.findLast((candidate) => candidate !== "") ?? "";
   if (failure !== undefined) return { status: "failed", text: text === "" ? failure : `${failure}\n${text}` };
   // A stop drops this report, so it reaches the parent only after a cancel with no stop. A quit can do that.
-  if (end !== null && end !== undefined && "outcome" in end && end.outcome === "cancelled") {
+  if (end?.kind === "cancelled") {
     const note = "A cancel ended the subagent before it finished.";
     return { status: "cancelled", text: text === "" ? note : `${note}\n${text}` };
   }

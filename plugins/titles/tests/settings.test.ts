@@ -5,7 +5,7 @@ import { createFrame, equal, folder, rejects, waitForSettled, test } from "yuke:
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, modelId, resolveModel, type SavedModels } from "../src/models.ts";
 
-const REASONING = { thinking: { adaptive: null }, effort: "high" } as const;
+const REASONING = { thinking: { kind: "adaptive" }, effort: "high" } as const;
 const PROVIDERS = [
   {
     id: "anthropic",
@@ -79,7 +79,7 @@ test("model ids and provider resolution use the selected reasoning settings", ()
   equal(modelId(OPUS), "anthropic/claude-opus:high");
   equal(resolveModel(OPUS, PROVIDERS), {
     model: { provider: "anthropic", model: "claude-opus" },
-    reasoning: { thinking: { adaptive: null }, effort: "high" },
+    reasoning: { thinking: { kind: "adaptive" }, effort: "high" },
   });
   equal(resolveModel({ model: "gone/model", reasoning: "high" }, PROVIDERS), undefined);
 });

@@ -107,7 +107,7 @@ test("a tool-call response copies the same displayed answer before and after reo
   loaded.tui.commands.run("btw:ask");
   frame.paste("side question");
   frame.key("enter");
-  const notice = "[Response ended: tool_calls. No tool was executed.]";
+  const notice = "[Response ended: toolCalls. No tool was executed.]";
   await waitFor(() => screen(frame).includes(notice));
 
   const expected = `The model returned no text. No tool was executed.\n\n${notice}`;

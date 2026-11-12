@@ -1,7 +1,7 @@
 import { mkdir, readDir, remove, writeTextFile } from "yuke:fs";
 import { ConnectionError } from "yuke:net";
 import type { PluginContext, SessionContext, Sessions } from "yuke:plugins";
-import type { SessionActivity } from "yuke:protocol";
+import type { SessionState } from "yuke:protocol";
 import { request, serve, sleep } from "./transport.ts";
 
 /** What a message tells about its sender. */
@@ -13,7 +13,7 @@ export interface Sender {
 
 /** An open session, as `mailbox_list_agents` shows it. */
 export interface Agent extends Sender {
-  readonly activity: SessionActivity;
+  readonly activity: SessionState;
 }
 
 /**
@@ -288,7 +288,7 @@ export class Mailbox {
       sessionId: s.sessionId,
       title: row.session.title ?? null,
       folder: row.session.cwd,
-      activity: row.activity,
+      activity: row.state,
     };
   }
 

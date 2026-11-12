@@ -284,7 +284,7 @@ test("the close of the parent stops a subagent that runs", async () => {
   await list.closeForAll(parent.id);
   await waitForSettled();
 
-  equal((await list.get(id)).activity, "idle");
+  equal((await list.get(id)).state, "idle");
   equal(host.requests.length, 1);
 });
 

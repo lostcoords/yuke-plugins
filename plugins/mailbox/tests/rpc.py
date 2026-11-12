@@ -305,14 +305,7 @@ def assert_closed(before, after):
 
 
 def new_session(client, cwd, model):
-    settings = {
-        "maxOutputTokens": None,
-        "reasoning": {"thinking": None, "effort": None},
-        "temperature": None,
-        "topP": None,
-        "toolChoice": "auto",
-        "outputSchema": None,
-    }
+    settings = {"reasoning": {}, "toolChoice": "auto"}
     result = client.call(
         "session/new",
         {
@@ -325,7 +318,7 @@ def new_session(client, cwd, model):
 
 
 def send(client, session, value):
-    return client.call("session/input", {"sessionId": session, "content": [{"user_text": value}]})
+    return client.call("session/input", {"sessionId": session, "content": [{"kind": "userText", "text": value}]})
 
 
 def update_of(message):

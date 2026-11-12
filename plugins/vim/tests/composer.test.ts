@@ -201,7 +201,7 @@ test("undo and redo restore image and paste spans with their metadata", () => {
       to: 2,
       kind: "image",
       label: "[image 1]",
-      media: { blob: { digest: "abc", len: 3 }, mime: "image/png" },
+      media: { blob: { digest: "abc", len: 3 }, mimeType: "image/png" },
     },
     { from: 2, to: 7, kind: "paste", label: "[5 chars]" },
   ]);
@@ -218,7 +218,7 @@ test("undo and redo restore image and paste spans with their metadata", () => {
         to: 2,
         kind: "image",
         label: "[image 1]",
-        media: { blob: { digest: "abc", len: 3 }, mime: "image/png" },
+        media: { blob: { digest: "abc", len: 3 }, mimeType: "image/png" },
       },
       { from: 2, to: 7, kind: "paste", label: "[5 chars]" },
     ],
@@ -309,7 +309,7 @@ test("undo restores image metadata when text and span ranges stay equal", () => 
       to: 1,
       kind: "image",
       label: "[image]",
-      media: { blob: { digest: "first", len: 3 }, mime: "image/png" },
+      media: { blob: { digest: "first", len: 3 }, mimeType: "image/png" },
     },
   ]);
   using frame = fixture.frame;
@@ -319,7 +319,7 @@ test("undo restores image metadata when text and span ranges stay equal", () => 
       to: 1,
       kind: "image",
       label: "[image]",
-      media: { blob: { digest: "second", len: 4 }, mime: "image/jpeg", filename: "second.jpg" },
+      media: { blob: { digest: "second", len: 4 }, mimeType: "image/jpeg", filename: "second.jpg" },
     },
   ]);
   frame.key("esc u");
@@ -329,7 +329,7 @@ test("undo restores image metadata when text and span ranges stay equal", () => 
       to: 1,
       kind: "image",
       label: "[image]",
-      media: { blob: { digest: "first", len: 3 }, mime: "image/png" },
+      media: { blob: { digest: "first", len: 3 }, mimeType: "image/png" },
     },
   ]);
   frame.key("ctrl+r");
@@ -339,7 +339,7 @@ test("undo restores image metadata when text and span ranges stay equal", () => 
       to: 1,
       kind: "image",
       label: "[image]",
-      media: { blob: { digest: "second", len: 4 }, mime: "image/jpeg", filename: "second.jpg" },
+      media: { blob: { digest: "second", len: 4 }, mimeType: "image/jpeg", filename: "second.jpg" },
     },
   ]);
 });

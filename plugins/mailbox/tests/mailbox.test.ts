@@ -159,7 +159,8 @@ test("a direct message wakes an idle session and reaches the model as an agent n
   assert(shown?.kind === "input");
   equal(shown.content, [
     {
-      user_text: `Message from ${from} (Plan the database migration for the ten…): The migration is ready.\nUse tenant_id.`,
+      kind: "userText",
+      text: `Message from ${from} (Plan the database migration for the ten…): The migration is ready.\nUse tenant_id.`,
     },
   ]);
 
@@ -193,7 +194,7 @@ test("child sessions have no mailbox and do not appear in discovery", async () =
       [state.target],
     );
 
-    await handle.sendMessage({ content: [{ user_text: "Work on the task." }] });
+    await handle.sendMessage({ content: [{ kind: "userText", text: "Work on the task." }] });
     await handle.waitForIdle();
   } finally {
     controller.abort();

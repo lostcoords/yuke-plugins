@@ -173,7 +173,7 @@ test("the latest round supplies the cache prefix and no side tool call is execut
   await main.sendMessage("second task");
   const before = JSON.stringify(main.transcript.entries);
   const result = await ask(main.id, "side question", new AbortController().signal);
-  equal(result.finishReason, "tool_calls");
+  equal(result.finishReason, "toolCalls");
   equal(calls, 1);
   equal(JSON.stringify(main.transcript.entries), before);
   const side = JSON.stringify(host.requests[3]?.messages);
@@ -565,7 +565,7 @@ test("a compaction before the latest round becomes the side request's cached con
         name: "compact",
         session: (s) => {
           s.addHook("round.before", () => ({
-            replace: { head: [{ user_text: "compacted history" }], keep: 1 },
+            replace: { head: [{ kind: "userText", text: "compacted history" }], keep: 1 },
           }));
         },
       },
@@ -575,7 +575,11 @@ test("a compaction before the latest round becomes the side request's cached con
   });
   const main = await host.openSession();
   await main.runHook("round.before", {
-    blocks: [{ user_text: "old input" }, { assistant_text: { text: "old answer" } }, { user_text: "new input" }],
+    blocks: [
+      { kind: "userText", text: "old input" },
+      { kind: "assistantText", text: "old answer" },
+      { kind: "userText", text: "new input" },
+    ],
   });
   await ask(main.id, "side question", new AbortController().signal);
   const messages = JSON.stringify(host.requests[0]?.messages);

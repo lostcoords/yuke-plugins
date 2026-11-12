@@ -9,7 +9,7 @@ import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, type SavedModels } from "../src/models.ts";
 import { rowsOf } from "./frame-rows.ts";
 
-const OPUS = { thinking: "adaptive", effort: "high" };
+const OPUS = { thinking: { kind: "adaptive" }, effort: "high" };
 const CATALOG = {
   list: async () => ({
     providers: [

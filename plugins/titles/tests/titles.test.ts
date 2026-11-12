@@ -156,7 +156,7 @@ test("manual names and child sessions keep their titles", async () => {
   const controller = new AbortController();
   const child = await state.sessions.open(childId, { tail: 0, signal: controller.signal, onEvent() {} });
   try {
-    await child.sendMessage({ content: [{ user_text: "Review login." }] });
+    await child.sendMessage({ content: [{ kind: "userText", text: "Review login." }] });
     await child.waitForIdle();
     equal((await state.sessions.get(childId)).session.title, "Review login.");
   } finally {
@@ -213,8 +213,8 @@ test("notifications do not name sessions and the first displayed message supplie
     // The displayed request, not the expanded model-only prompt, supplies the title.
     state.hold();
     await handle.sendMessage({
-      content: [{ user_text: "Explain this API." }],
-      modelContent: [{ user_text: "Expanded private instructions." }],
+      content: [{ kind: "userText", text: "Explain this API." }],
+      modelContent: [{ kind: "userText", text: "Expanded private instructions." }],
     });
     await waitFor(async () => (await state.title()) === "Original request title");
     state.release();
