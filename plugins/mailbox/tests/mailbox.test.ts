@@ -362,7 +362,7 @@ test("a message to a busy session waits for its running tool and reaches the nex
         },
       },
     ],
-    replies: [reply.toolCall("hold", {}), reply.text("I read the update.")],
+    replies: [reply.toolCalls([{ name: "hold", args: {} }]), reply.text("I read the update.")],
   });
   await using _host = host;
 
@@ -393,8 +393,8 @@ test("mailbox tools stay deferred beside subagent tools and discovery works thro
       { name: "mailbox", apply, session },
     ],
     replies: [
-      reply.toolCall("tool_search", { query: "mailbox_list_agents", limit: 1 }),
-      reply.toolCall("tool_call", { name: "mailbox_list_agents", arguments: {} }),
+      reply.toolCalls([{ name: "tool_search", args: { query: "mailbox_list_agents", limit: 1 } }]),
+      reply.toolCalls([{ name: "tool_call", args: { name: "mailbox_list_agents", arguments: {} } }]),
       reply.text("I found the peer."),
     ],
   });

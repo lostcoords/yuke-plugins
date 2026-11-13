@@ -1,7 +1,8 @@
 import { readTextFile } from "yuke:fs";
-import type { ServiceOf, Services, Sessions } from "yuke:plugins";
+import type { Sessions } from "yuke:plugins";
 import { assert, assertEquals, createFrame, createHost, reply, test, waitForSettled } from "yuke:test";
 import { apply } from "../src/index.ts";
+import { rows, withServices } from "./support.ts";
 
 test("the settings command saves a picked model and regenerate renames the focused session without a reload", async () => {
   using frame = createFrame({ width: 100, height: 24 });
@@ -35,11 +36,7 @@ test("the settings command saves a picked model and regenerate renames the focus
         apply(ctx) {
           dataDir = ctx.dataDir;
           sessions = ctx.get("sessions");
-          return apply({
-            ...ctx,
-            get: <K extends keyof Services & string>(name: K): ServiceOf<K> =>
-              name === "tui" ? (tui as ServiceOf<K>) : ctx.get(name),
-          });
+          return apply(withServices(ctx, { tui }));
         },
       },
     ],
@@ -55,16 +52,7 @@ test("the settings command saves a picked model and regenerate renames the focus
 
   assertEquals(tui.commands.run("titles:settings"), true);
   await waitForSettled();
-  frame.draw();
-  assertEquals(
-    frame.frame.cells.some((row) =>
-      row
-        .map((cell) => cell.text)
-        .join("")
-        .includes("No title models yet"),
-    ),
-    true,
-  );
+  assert(rows(frame).some((row) => row.includes("No title models yet")));
   frame.key("a");
   await waitForSettled();
   frame.paste("anthropic/claude-fable-5");
@@ -79,10 +67,7 @@ test("the settings command saves a picked model and regenerate renames the focus
   });
 
   assertEquals(tui.commands.run("titles:regenerate"), true);
-  for (let attempt = 0; (await sessions.get(session.id)).session.title !== "Fix login refresh"; attempt++) {
-    if (attempt === 200) throw new Error("The regenerated title did not arrive.");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
+  await waitForSettled();
   assertEquals((await sessions.get(session.id)).session.title, "Fix login refresh");
   assertEquals(host.requests[1]?.messages, [{ role: "user", text: "Fix login after the access token expires." }]);
   assertEquals(host.notices.at(-1)?.text, "Session title: Fix login refresh");

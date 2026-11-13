@@ -1,27 +1,9 @@
 import { ChatCompletions, slashCompletions } from "yuke:chat";
-import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
-import { assert, assertEquals, assertRejects, createFrame, createHost, type FrameTest, reply, test } from "yuke:test";
-import { TextEditor, type Tui } from "yuke:tui";
+import { assert, assertEquals, assertRejects, createFrame, createHost, reply, test, waitForSettled } from "yuke:test";
+import { TextEditor } from "yuke:tui";
 import { apply, session as setup } from "../src/index.ts";
 import { ask } from "../src/requests.ts";
-
-async function waitFor(done: () => boolean): Promise<void> {
-  for (let attempt = 0; !done(); attempt++) {
-    if (attempt === 200) throw new Error("The expected state did not arrive.");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-}
-
-/** Draw until the screen holds `text`, and give the screen. */
-async function screenWith(frame: FrameTest, text: string): Promise<string> {
-  let screen = "";
-  await waitFor(() => {
-    frame.draw();
-    screen = frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n");
-    return screen.includes(text);
-  });
-  return screen;
-}
+import { fakeChat, findRow, rows, rowText, screen, waitForRequests, withTerminal } from "./support.ts";
 
 const plugin = { name: "btw", session: setup };
 
@@ -33,7 +15,8 @@ test("a side answer arrives while the main model is still streaming and changes 
   const main = await host.openSession();
   const controller = new AbortController();
   const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
-  await waitFor(() => main.transcript.entries.some((entry) => entry.kind === "text" && entry.text === "working"));
+  await waitForSettled();
+  assert(main.transcript.entries.some((entry) => entry.kind === "text" && entry.text === "working"));
   const answer = await ask(main.id, "side question", new AbortController().signal);
   assertEquals(answer.text, "side answer");
   assertEquals(main.transcript.state, "running");
@@ -125,10 +108,10 @@ test("cancelling a side request leaves the main stream running", async () => {
   const main = await host.openSession();
   const mainController = new AbortController();
   const running = main.sendMessage("main task", { signal: mainController.signal }).catch(() => {});
-  await waitFor(() => host.requests.length === 1);
+  await waitForRequests(host, 1);
   const sideController = new AbortController();
   const side = ask(main.id, "side question", sideController.signal);
-  await waitFor(() => host.requests.length === 2);
+  await waitForRequests(host, 2);
   sideController.abort(new Error("side cancelled"));
   const error = await assertRejects(() => side);
   assert(error instanceof Error && error.message === "side cancelled");
@@ -159,10 +142,10 @@ test("the latest round supplies the cache prefix and no side tool call is execut
       },
     ],
     replies: [
-      reply.toolCall("mark", {}),
+      reply.toolCalls([{ name: "mark", args: {} }]),
       reply.text("first answer"),
       reply.text("second answer"),
-      reply.toolCall("mark", {}),
+      reply.toolCalls([{ name: "mark", args: {} }]),
     ],
   });
   const main = await host.openSession();
@@ -196,7 +179,7 @@ test("closing a session cancels its side request", async () => {
   const main = await host.openSession();
   await main.sendMessage("main task");
   const side = ask(main.id, "side question", new AbortController().signal);
-  await waitFor(() => host.requests.length === 2);
+  await waitForRequests(host, 2);
   const rejected = assertRejects(() => side);
   await main.close();
   await rejected;
@@ -209,24 +192,7 @@ for (const width of [32, 100]) {
     let shown: string | undefined;
     await using host = await createHost({
       plugins: [
-        {
-          name: "chat",
-          provides: ["chat"],
-          apply: (ctx) => {
-            ctx.provide("chat", {
-              session: () => shown,
-              show: async () => {},
-              addChangeListener: () => () => {},
-              addPaneWatcher: () => () => {},
-              addCompletionProvider: () => () => {},
-              addComposerView: () => () => {},
-              setPresentation: () => () => {},
-              addReadOnly: () => () => {},
-              setComposerFrame: () => () => {},
-              setEmptyView: () => () => {},
-            });
-          },
-        },
+        fakeChat(() => shown),
         {
           name: "btw",
           uses: ["chat"],
@@ -242,43 +208,26 @@ for (const width of [32, 100]) {
     shown = main.id;
     const controller = new AbortController();
     const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
-    await waitFor(() => host.requests.length === 1);
+    await waitForRequests(host, 1);
     surface.tui.panes.split(() => ({
       draw: (canvas) => canvas.text(0, 0, "MAIN WORK"),
     }));
     frame.draw();
     assertEquals(surface.tui.commands.run("btw:ask"), true);
     frame.draw();
-    const initial = frame.frame.cells.map((row) => row.map((cell) => cell.text).join(""));
+    const initial = rows(frame);
     assert(
       initial.some((line) => line.includes("Ask a side question")),
       initial.join("\n"),
     );
     assert(!initial.some((line) => /cached round|latest main round|main task/i.test(line)));
-    const titleRow = frame.frame.cells.find((row) =>
-      row
-        .map((cell) => cell.text)
-        .join("")
-        .includes(" /btw "),
-    );
+    const titleRow = findRow(frame, " /btw ");
     assert(titleRow !== undefined);
-    assertEquals(
-      titleRow
-        .map((cell) => cell.text)
-        .join("")
-        .trim(),
-      "/btw",
-      "The command belongs on a plain row, not in a border.",
-    );
+    assertEquals(rowText(titleRow).trim(), "/btw", "The command belongs on a plain row, not in a border.");
     const titleColumn = titleRow.findIndex((cell) => cell.text === "b");
     assertEquals(titleRow[titleColumn]?.style.fg, "#a8cfa0", "Use Yuke's native accent for the title.");
     assertEquals(titleRow[titleColumn]?.style.bg, undefined, "Keep the terminal background throughout the panel.");
-    const placeholderRow = frame.frame.cells.find((row) =>
-      row
-        .map((cell) => cell.text)
-        .join("")
-        .includes("Ask a side question"),
-    );
+    const placeholderRow = findRow(frame, "Ask a side question");
     assert(placeholderRow !== undefined);
     const promptColumn = placeholderRow.findIndex((cell) => cell.text === "›");
     assertEquals(placeholderRow[promptColumn]?.style.bg, undefined, "The inset editor uses the terminal background.");
@@ -291,100 +240,53 @@ for (const width of [32, 100]) {
     frame.key("enter");
     assertEquals(input.state.text, "", "Submitting a side question clears its composer immediately.");
     assertEquals(frame.frame.cursor?.row, frame.frame.height - 2, "Sending contracts the empty composer to one row.");
-    const pendingHeader = frame.frame.cells
-      .map((row) => row.map((cell) => cell.text).join(""))
-      .find((line) => line.includes("Working…"));
+    const pendingRows = rows(frame);
+    const pendingHeader = pendingRows.find((line) => line.includes("Working…"));
     assert(pendingHeader !== undefined);
     const spinner = pendingHeader.match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)?.[0];
     assert(spinner !== undefined, "A pending side request must show an animated loading indicator.");
     assert(pendingHeader.includes("0s"), pendingHeader);
-    const pendingRows = frame.frame.cells.map((row) => row.map((cell) => cell.text).join(""));
     const statusRow = pendingRows.findIndex((line) => line.includes("Working…"));
     const composerRow = pendingRows.findIndex((line) => line.includes("Ask a side question"));
     assertEquals(composerRow - statusRow, 2, "Loading belongs immediately above the composer.");
     assert(!/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(pendingRows.find((line) => line.includes(" /btw ")) ?? ""));
     frame.advance(160);
-    const advancedHeader = frame.frame.cells
-      .map((row) => row.map((cell) => cell.text).join(""))
-      .find((line) => line.includes("Working…"));
+    const advancedHeader = rows(frame).find((line) => line.includes("Working…"));
     assert(advancedHeader !== undefined && !advancedHeader.includes(spinner), "The pending spinner must advance.");
     frame.advance(1000);
-    assert(
-      frame.frame.cells.some((row) =>
-        row
-          .map((cell) => cell.text)
-          .join("")
-          .includes("1s"),
-      ),
-    );
+    assert(rows(frame).some((line) => line.includes("1s")));
     frame.paste("my next draft");
-    await waitFor(() => host.requests.length === 2);
     // Request completion and the overlay's promise continuation run on later jobs.
-    const screen = await screenWith(frame, "A side answer.");
-    assert(screen.includes("/btw my side question"), screen);
-    const questionRow = frame.frame.cells.find((row) =>
-      row
-        .map((cell) => cell.text)
-        .join("")
-        .includes("/btw my side question"),
-    );
+    await waitForRequests(host, 2);
+    const answered = screen(frame);
+    assert(answered.includes("A side answer."), answered);
+    assert(answered.includes("/btw my side question"), answered);
+    const questionRow = findRow(frame, "/btw my side question");
     assert(questionRow !== undefined);
     const questionColumn = questionRow.findIndex((cell) => cell.text === "/");
     assertEquals(questionRow[questionColumn]?.style.bg, undefined, "Native text views retain the terminal background.");
-    const answerRow = frame.frame.cells.find((row) =>
-      row
-        .map((cell) => cell.text)
-        .join("")
-        .includes("A side answer."),
-    );
+    const answerRow = findRow(frame, "A side answer.");
     assert(answerRow !== undefined);
     assertEquals(answerRow.find((cell) => cell.text === "A")?.style.fg, undefined);
-    assert(!screen.split("\n").some((line) => ["You", "Yuke"].includes(line.trim())), screen);
-    assert(!/cached round|asking in parallel|main task is still running/.test(screen), screen);
-    const finishedHeader = screen.split("\n").find((line) => line.includes(" /btw "));
+    assert(!answered.split("\n").some((line) => ["You", "Yuke"].includes(line.trim())), answered);
+    assert(!/cached round|asking in parallel|main task is still running/.test(answered), answered);
+    const finishedHeader = answered.split("\n").find((line) => line.includes(" /btw "));
     assert(finishedHeader !== undefined && !/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(finishedHeader));
     frame.advance(2000);
-    assertEquals(
-      frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n"),
-      screen,
-      "Loading must stop after the answer arrives.",
-    );
-    assert(screen.includes("A side answer."), screen);
-    assert(screen.indexOf("my side question") < screen.indexOf("A side answer."), screen);
+    assertEquals(screen(frame), answered, "Loading must stop after the answer arrives.");
+    assert(answered.includes("A side answer."), answered);
+    assert(answered.indexOf("my side question") < answered.indexOf("A side answer."), answered);
     assertEquals(surface.tui.focused, input);
     assertEquals(input.state.text, "my next draft", "An arriving answer must preserve the next draft.");
-    assert(screen.includes("MAIN WORK"), screen);
+    assert(answered.includes("MAIN WORK"), answered);
     frame.key("ctrl+y");
     assertEquals(frame.copies, ["A side answer."]);
     assertEquals(main.transcript.state, "running");
     frame.key("esc");
-    frame.draw();
-    assert(
-      !frame.frame.cells.some((row) =>
-        row
-          .map((cell) => cell.text)
-          .join("")
-          .includes("A side answer."),
-      ),
-    );
+    assert(!screen(frame).includes("A side answer."));
     controller.abort();
     await running;
   });
-}
-
-/** Supply a real frame terminal to the otherwise headless test host. */
-function withTerminal(ctx: PluginContext, tui: Tui): PluginContext {
-  // The fake chat service omits the style registrations supplied by Yuke's bundled chat.
-  tui.styles.add({
-    "chat.title": { fg: "accent", bold: true },
-    "chat.hint": { fg: "accent" },
-    "chat.meta": { dim: true },
-  });
-  const get = <K extends keyof Services & string>(name: K): ServiceOf<K> => {
-    if (name === "tui") return tui as ServiceOf<K>;
-    return ctx.get(name);
-  };
-  return { ...ctx, get };
 }
 
 for (const draft of ["/btw", "/btw explain this side question"]) {
@@ -401,24 +303,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     });
     await using host = await createHost({
       plugins: [
-        {
-          name: "chat",
-          provides: ["chat"],
-          apply: (ctx) => {
-            ctx.provide("chat", {
-              session: () => shown,
-              show: async () => {},
-              addChangeListener: () => () => {},
-              addPaneWatcher: () => () => {},
-              addCompletionProvider: () => () => {},
-              addComposerView: () => () => {},
-              setPresentation: () => () => {},
-              addReadOnly: () => () => {},
-              setComposerFrame: () => () => {},
-              setEmptyView: () => () => {},
-            });
-          },
-        },
+        fakeChat(() => shown),
         {
           name: "btw",
           uses: ["chat"],
@@ -432,7 +317,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     shown = main.id;
     const controller = new AbortController();
     const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
-    await waitFor(() => host.requests.length === 1);
+    await waitForRequests(host, 1);
     new ChatCompletions(composer, {
       providers: () => [slashCompletions(surface.tui.commands)],
       cwd: () => "/",
@@ -463,8 +348,9 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
       frame.paste("explain this side question");
       frame.key("enter");
     }
-    await waitFor(() => host.requests.length === 2);
-    const screen = await screenWith(frame, "Answer to the side question.");
+    await waitForRequests(host, 2);
+    const answered = screen(frame);
+    assert(answered.includes("Answer to the side question."), answered);
     assertEquals(submissions, ["ordinary main message"]);
     assertEquals(main.transcript.state, "running");
     assertEquals(main.transcript.pending.size, 0);
@@ -472,7 +358,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     const sideInput = surface.tui.widgets.list().find((mount) => mount.widget.role === "field")?.widget;
     assert(sideInput?.kind === "editor");
     assertEquals(sideInput.state.text, "", "Both /btw entry paths leave the side composer empty.");
-    assert(screen.indexOf("explain this side question") < screen.indexOf("Answer to the side question."), screen);
+    assert(answered.indexOf("explain this side question") < answered.indexOf("Answer to the side question."), answered);
     frame.key("esc");
     assertEquals(surface.tui.focused, composer);
     controller.abort();
@@ -485,27 +371,7 @@ test("the installed manifest loads against Yuke's plugin loader", async () => {
   assert(directory !== undefined, "This test must run from a file.");
   const folder = `${directory}/..`;
   await using host = await createHost({
-    plugins: [
-      {
-        name: "chat",
-        provides: ["chat"],
-        apply: (ctx) => {
-          ctx.provide("chat", {
-            session: () => undefined,
-            show: async () => {},
-            addChangeListener: () => () => {},
-            addPaneWatcher: () => () => {},
-            addCompletionProvider: () => () => {},
-            addComposerView: () => () => {},
-            setPresentation: () => () => {},
-            addReadOnly: () => () => {},
-            setComposerFrame: () => () => {},
-            setEmptyView: () => () => {},
-          });
-        },
-      },
-      { folder },
-    ],
+    plugins: [fakeChat(), { folder }],
     replies: [reply.text("main answer"), reply.text("side answer")],
   });
   const main = await host.openSession();
@@ -521,17 +387,17 @@ test("cancelling the main turn does not cancel a side request", async () => {
   const main = await host.openSession();
   const mainController = new AbortController();
   const running = main.sendMessage("main task", { signal: mainController.signal }).catch(() => {});
-  await waitFor(() => host.requests.length === 1);
+  await waitForRequests(host, 1);
   const sideController = new AbortController();
   let settled = false;
   const side = ask(main.id, "side question", sideController.signal).finally(() => {
     settled = true;
   });
   const rejected = assertRejects(() => side);
-  await waitFor(() => host.requests.length === 2);
+  await waitForRequests(host, 2);
   mainController.abort();
   await running;
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await waitForSettled();
   assertEquals(settled, false);
   sideController.abort();
   await rejected;
@@ -584,24 +450,7 @@ for (const outcome of ["error", "cancel"]) {
     let shown: string | undefined;
     await using host = await createHost({
       plugins: [
-        {
-          name: "chat",
-          provides: ["chat"],
-          apply: (ctx) => {
-            ctx.provide("chat", {
-              session: () => shown,
-              show: async () => {},
-              addChangeListener: () => () => {},
-              addPaneWatcher: () => () => {},
-              addCompletionProvider: () => () => {},
-              addComposerView: () => () => {},
-              setPresentation: () => () => {},
-              addReadOnly: () => () => {},
-              setComposerFrame: () => () => {},
-              setEmptyView: () => () => {},
-            });
-          },
-        },
+        fakeChat(() => shown),
         {
           name: "btw",
           uses: ["chat"],
@@ -623,32 +472,21 @@ for (const outcome of ["error", "cancel"]) {
     frame.draw();
     frame.paste("side question");
     frame.key("enter");
-    const pending = frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n");
-    assert(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(pending));
-    await waitFor(() => host.requests.length === 2);
+    assert(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(screen(frame)));
+    await waitForRequests(host, 2);
     if (outcome === "cancel") frame.key("esc");
-    else
-      await waitFor(() => {
-        frame.draw();
-        return frame.frame.cells.some((row) =>
-          row
-            .map((cell) => cell.text)
-            .join("")
-            .includes("Side request failed"),
-        );
-      });
-    frame.draw();
-    const stopped = frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n");
+    const stopped = screen(frame);
     assert(!/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(stopped));
     assert(stopped.includes("MAIN READY"));
     if (outcome === "error") {
+      assert(stopped.includes("Side request failed"), stopped);
       assert(stopped.includes("/btw side question"));
       const editor = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focused)?.widget;
       assert(editor?.kind === "editor");
       assertEquals(editor.state.text, "");
     } else assert(!stopped.includes(" /btw "));
     frame.advance(3000);
-    assertEquals(frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n"), stopped);
+    assertEquals(screen(frame), stopped);
     assertEquals(main.transcript.state, "idle");
     assertEquals(JSON.stringify(main.transcript.entries), before);
   });

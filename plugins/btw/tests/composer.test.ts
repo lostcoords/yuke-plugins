@@ -1,7 +1,7 @@
-import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
 import { assert, assertEquals, createFrame, createHost, test } from "yuke:test";
 import type { MouseEvent } from "yuke:tui";
 import { apply } from "../src/index.ts";
+import { fakeChat, rows, withTerminal } from "./support.ts";
 
 for (const width of [32, 100]) {
   test(`the composer grows with its draft, keeps padding and cursor alignment, and contracts at width ${width}`, async () => {
@@ -9,37 +9,11 @@ for (const width of [32, 100]) {
     const surface = frame.surface("btw");
     await using host = await createHost({
       plugins: [
-        {
-          name: "chat",
-          provides: ["chat"],
-          apply: (ctx) => {
-            ctx.provide("chat", {
-              session: () => undefined,
-              show: async () => {},
-              addChangeListener: () => () => {},
-              addPaneWatcher: () => () => {},
-              addCompletionProvider: () => () => {},
-              addComposerView: () => () => {},
-              setPresentation: () => () => {},
-              addReadOnly: () => () => {},
-              setComposerFrame: () => () => {},
-              setEmptyView: () => () => {},
-            });
-          },
-        },
+        fakeChat(),
         {
           name: "btw",
           uses: ["chat"],
-          apply: (ctx) => {
-            surface.tui.styles.add({
-              "chat.title": { fg: "accent", bold: true },
-              "chat.hint": { fg: "accent" },
-              "chat.meta": { dim: true },
-            });
-            const get = <K extends keyof Services & string>(name: K): ServiceOf<K> =>
-              name === "tui" ? (surface.tui as ServiceOf<K>) : ctx.get(name);
-            return apply({ ...ctx, get } satisfies PluginContext);
-          },
+          apply: (ctx) => apply(withTerminal(ctx, surface.tui)),
         },
       ],
     });
@@ -48,9 +22,8 @@ for (const width of [32, 100]) {
     frame.draw();
     const input = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focused)?.widget;
     assert(input?.kind === "editor");
-    const lines = () => frame.frame.cells.map((row) => row.map((cell) => cell.text).join(""));
     const fieldHeight = () => {
-      const rule = lines().findLastIndex((line) => /^─+$/.test(line.trim()));
+      const rule = rows(frame).findLastIndex((line) => /^─+$/.test(line.trim()));
       assert(rule >= 0, "A plain rule separates the input from the answer.");
       return frame.frame.height - rule - 2;
     };
@@ -62,11 +35,11 @@ for (const width of [32, 100]) {
     };
 
     assertEquals(fieldHeight(), 1, "An empty composer must not reserve three content rows.");
-    const placeholderRow = lines().findIndex((line) => line.includes("Ask a side question"));
+    const placeholderRow = rows(frame).findIndex((line) => line.includes("Ask a side question"));
     const row = frame.frame.cells[placeholderRow];
     assert(row !== undefined);
     const prompt = row.findIndex((cell) => cell.text === "›");
-    const placeholder = lines()[placeholderRow]?.indexOf("Ask a side question");
+    const placeholder = rows(frame)[placeholderRow]?.indexOf("Ask a side question");
     assert(placeholder !== undefined);
     assertEquals(frame.frame.cursor?.row, placeholderRow);
     assertEquals(frame.frame.cursor?.column, placeholder - 1, "The block cursor belongs before the placeholder.");
@@ -78,7 +51,7 @@ for (const width of [32, 100]) {
     assertEquals(row[right]?.text, " ");
     assertEquals(row[right]?.style.bg, undefined, "The field has one cell of inner right padding.");
     assertEquals(row[right + 1]?.style.bg, undefined);
-    const footer = lines().at(-1) ?? "";
+    const footer = rows(frame).at(-1) ?? "";
     assert(footer.includes("Enter send") && footer.includes("Esc close"), footer);
     assert(!/copy|Tab focus|scroll/.test(footer), "Only primary action hints belong in the footer.");
     if (width >= 80) assert(footer.includes("Ctrl+R history"), footer);

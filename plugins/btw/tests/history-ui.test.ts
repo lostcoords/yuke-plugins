@@ -1,59 +1,33 @@
 import { mkdir, writeTextFile } from "yuke:fs";
-import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
-import { assert, assertEquals, createFrame, createHost, type FrameTest, type Reply, reply, test } from "yuke:test";
+import {
+  assert,
+  assertEquals,
+  createFrame,
+  createHost,
+  type FrameTest,
+  type Reply,
+  reply,
+  test,
+  waitForSettled,
+} from "yuke:test";
 import { History } from "../src/history.ts";
 import { apply, session } from "../src/index.ts";
-
-async function waitFor(check: () => boolean): Promise<void> {
-  for (let tries = 0; !check(); tries++) {
-    if (tries === 200) throw new Error("Expected UI state did not arrive.");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-}
-
-function screen(frame: FrameTest): string {
-  frame.draw();
-  return frame.frame.cells.map((row) => row.map((cell) => cell.text).join("")).join("\n");
-}
+import { fakeChat, findRow, rowText, screen, waitForScreen, withTerminal } from "./support.ts";
 
 async function setup(frame: FrameTest, replies: readonly Reply[] = []) {
   const surface = frame.surface("btw");
-  surface.tui.styles.add({
-    "chat.title": { fg: "accent", bold: true },
-    "chat.hint": { fg: "accent" },
-    "chat.meta": { dim: true },
-  });
   let shown: string | undefined;
   let dataDir: string | undefined;
   const host = await createHost({
     plugins: [
-      {
-        name: "chat",
-        provides: ["chat"],
-        apply: (ctx) => {
-          ctx.provide("chat", {
-            session: () => shown,
-            show: async () => {},
-            addChangeListener: () => () => {},
-            addPaneWatcher: () => () => {},
-            addCompletionProvider: () => () => {},
-            addComposerView: () => () => {},
-            setPresentation: () => () => {},
-            addReadOnly: () => () => {},
-            setComposerFrame: () => () => {},
-            setEmptyView: () => () => {},
-          });
-        },
-      },
+      fakeChat(() => shown),
       {
         name: "btw",
         uses: ["chat"],
         session,
         apply: (ctx) => {
           dataDir = ctx.dataDir;
-          const get = <K extends keyof Services & string>(name: K): ServiceOf<K> =>
-            name === "tui" ? (surface.tui as ServiceOf<K>) : ctx.get(name);
-          return apply({ ...ctx, get } satisfies PluginContext);
+          return apply(withTerminal(ctx, surface.tui));
         },
       },
     ],
@@ -81,7 +55,7 @@ for (const width of [32, 100]) {
     await using host = loaded.host;
     await loaded.history.save({ ...record, sessionId: loaded.main.id });
     loaded.tui.commands.run("btw:ask");
-    await waitFor(() => screen(frame).includes("earlier answer"));
+    await waitForScreen(frame, "earlier answer");
     assert(!screen(frame).includes("History ·"));
     const header = screen(frame)
       .split("\n")
@@ -94,7 +68,7 @@ for (const width of [32, 100]) {
     assertEquals(frame.copies, ["earlier answer"]);
     frame.key("esc");
     loaded.tui.commands.run("btw:ask");
-    await waitFor(() => screen(frame).includes("earlier answer"));
+    await waitForScreen(frame, "earlier answer");
     assertEquals(host.requests.length, 0);
     assertEquals(loaded.main.transcript.entries.length, 0);
   });
@@ -102,7 +76,7 @@ for (const width of [32, 100]) {
 
 test("a tool-call response copies the same displayed answer before and after reopening history", async () => {
   using frame = createFrame({ width: 100, height: 30 });
-  const loaded = await setup(frame, [reply.text("main answer"), reply.toolCall("mark", {})]);
+  const loaded = await setup(frame, [reply.text("main answer"), reply.toolCalls([{ name: "mark", args: {} }])]);
   await using host = loaded.host;
   await loaded.main.sendMessage("main task");
 
@@ -110,7 +84,7 @@ test("a tool-call response copies the same displayed answer before and after reo
   frame.paste("side question");
   frame.key("enter");
   const notice = "[Response ended: toolCalls. No tool was executed.]";
-  await waitFor(() => screen(frame).includes(notice));
+  await waitForScreen(frame, notice);
 
   const expected = `The model returned no text. No tool was executed.\n\n${notice}`;
   const saved = (await loaded.history.list(loaded.main.id)).entries[0];
@@ -120,9 +94,9 @@ test("a tool-call response copies the same displayed answer before and after reo
 
   frame.key("esc");
   loaded.tui.commands.run("btw:history");
-  await waitFor(() => screen(frame).includes("side question"));
+  await waitForScreen(frame, "side question");
   frame.key("enter");
-  await waitFor(() => screen(frame).includes(notice));
+  await waitForScreen(frame, notice);
   frame.key("ctrl+y");
   assertEquals(frame.copies, [expected, expected]);
   assertEquals(host.requests.length, 2);
@@ -136,7 +110,7 @@ test("asking without a main round shows an info notice and sends no request", as
   loaded.tui.commands.run("btw:ask");
   frame.paste("side question");
   frame.key("enter");
-  await waitFor(() => host.notices.length > 0);
+  await waitForSettled();
   assertEquals(
     host.notices.map(({ level, text: message }) => ({ level, message })),
     [{ level: "info", message: "Send a message in the main conversation before using /btw." }],
@@ -156,33 +130,23 @@ test("history search finds answer text and can browse other sessions without a m
     sessionId: "other-session",
   });
   loaded.tui.commands.run("btw:history");
-  await waitFor(() => screen(frame).includes("earlier question"));
+  await waitForScreen(frame, "earlier question");
   assert(screen(frame).includes("this session"));
   assert(!/\d{4}-\d{2}-\d{2}/.test(screen(frame)), "Keep dates out of the history UI.");
-  const pickerTitle = frame.frame.cells.find((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .includes("btw history"),
-  );
+  const pickerTitle = findRow(frame, "btw history");
   assert(pickerTitle !== undefined);
   assertEquals(pickerTitle.find((cell) => cell.text === "b")?.style.bg, undefined);
-  const selectedRow = frame.frame.cells.find((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .includes("earlier question"),
-  );
+  const selectedRow = findRow(frame, "earlier question");
   assert(selectedRow !== undefined);
   const selectedCell = selectedRow.find((cell) => cell.text === "e");
   assert(selectedCell?.style.bg !== undefined, "Native selection highlighting stays visible on the panel.");
   assert(!screen(frame).includes("different question"));
   frame.key("tab");
-  await waitFor(() => screen(frame).includes("different question"));
+  await waitForScreen(frame, "different question");
   frame.paste("needle");
   assert(!screen(frame).includes("earlier question"));
   frame.key("enter");
-  await waitFor(() => screen(frame).includes("searchable answer needle"));
+  await waitForScreen(frame, "searchable answer needle");
   assert(!screen(frame).includes("History ·"));
   const header = screen(frame)
     .split("\n")
@@ -198,10 +162,10 @@ test("a new question after browsing does not send saved questions or answers to 
   await loaded.main.sendMessage("main task");
   await loaded.history.save({ ...record, sessionId: loaded.main.id });
   loaded.tui.commands.run("btw:ask");
-  await waitFor(() => screen(frame).includes("earlier answer"));
+  await waitForScreen(frame, "earlier answer");
   frame.paste("an independent new question");
   frame.key("enter");
-  await waitFor(() => screen(frame).includes("new side answer"));
+  await waitForScreen(frame, "new side answer");
   const sent = JSON.stringify(host.requests[1]?.messages);
   assert(sent.includes("an independent new question"));
   assert(!sent.includes("earlier question"));
@@ -209,7 +173,7 @@ test("a new question after browsing does not send saved questions or answers to 
   assertEquals((await loaded.history.list(loaded.main.id)).entries.length, 2);
   frame.key("esc");
   loaded.tui.commands.run("btw:ask");
-  await waitFor(() => screen(frame).includes("new side answer"));
+  await waitForScreen(frame, "new side answer");
   assertEquals(host.requests.length, 2);
 });
 
@@ -220,29 +184,19 @@ test("history deletion requires explicit confirmation and respects the session s
   await loaded.history.save({ ...record, sessionId: loaded.main.id });
   await loaded.history.save({ ...record, sessionId: "other-session", question: "other question" });
   loaded.tui.commands.run("btw:history");
-  await waitFor(() => screen(frame).includes("earlier question"));
+  await waitForScreen(frame, "earlier question");
   frame.key("tab");
   frame.key("ctrl+x");
   assert(!screen(frame).includes("Type DELETE"), "A scope that is still loading must not delete stale entries.");
-  await waitFor(() => screen(frame).includes("other question"));
+  await waitForScreen(frame, "other question");
   frame.key("tab");
-  await waitFor(() => screen(frame).includes("earlier question"));
+  await waitForScreen(frame, "earlier question");
   frame.key("ctrl+x");
   assert(screen(frame).includes("Type DELETE"));
-  const confirmTitle = frame.frame.cells.find((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .includes("Delete 1 saved"),
-  );
+  const confirmTitle = findRow(frame, "Delete 1 saved");
   assert(confirmTitle !== undefined);
   assertEquals(confirmTitle.find((cell) => cell.text === "D")?.style.bg, undefined);
-  const confirmInput = frame.frame.cells.find((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .includes("Type DELETE"),
-  );
+  const confirmInput = findRow(frame, "Type DELETE");
   assert(confirmInput !== undefined);
   assertEquals(confirmInput.find((cell) => cell.text === "T")?.style.bg, undefined);
   frame.key("enter");
@@ -251,17 +205,17 @@ test("history deletion requires explicit confirmation and respects the session s
   frame.key("ctrl+d");
   frame.paste("DELETE");
   frame.key("enter");
-  await waitFor(() => screen(frame).includes("No saved answers"));
+  await waitForScreen(frame, "No saved answers");
   assertEquals(
     (await loaded.history.list()).entries.map((item) => item.question),
     ["other question"],
   );
   frame.key("tab");
-  await waitFor(() => screen(frame).includes("other question"));
+  await waitForScreen(frame, "other question");
   frame.key("ctrl+x");
   frame.paste("DELETE");
   frame.key("enter");
-  await waitFor(() => screen(frame).includes("No saved answers"));
+  await waitForScreen(frame, "No saved answers");
   assertEquals((await loaded.history.list()).entries, []);
   assertEquals(host.requests.length, 0);
 });
@@ -272,7 +226,7 @@ test("a narrow confirmation rejects lowercase input and Esc returns to history",
   await using host = loaded.host;
   await loaded.history.save({ ...record, sessionId: loaded.main.id });
   loaded.tui.commands.run("btw:history");
-  await waitFor(() => screen(frame).includes("earlier question"));
+  await waitForScreen(frame, "earlier question");
 
   frame.key("ctrl+d");
   frame.paste("delete");
@@ -296,8 +250,8 @@ test("storage failure preserves the answer and reports that it was not saved", a
   frame.draw();
   frame.paste("side question");
   frame.key("enter");
-  await waitFor(() => screen(frame).includes("do not lose this answer"));
-  await waitFor(() => host.notices.some((notice) => notice.text.includes("was not saved")));
+  await waitForScreen(frame, "do not lose this answer");
+  assert(host.notices.some((notice) => notice.text.includes("was not saved")));
   frame.key("ctrl+y");
   assertEquals(frame.copies, ["do not lose this answer"]);
 });
@@ -313,15 +267,10 @@ test("flat presentation preserves Markdown highlights and copying the original a
   const answer = "Use **bold** and `inline`.";
   await loaded.history.save({ ...record, answer, sessionId: loaded.main.id });
   loaded.tui.commands.run("btw:ask");
-  await waitFor(() => screen(frame).includes("Use bold and inline."));
-  const row = frame.frame.cells.find((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .includes("Use bold and inline."),
-  );
+  await waitForScreen(frame, "Use bold and inline.");
+  const row = findRow(frame, "Use bold and inline.");
   assert(row !== undefined);
-  const text = row.map((cell) => cell.text).join("");
+  const text = rowText(row);
   assertEquals(row[text.indexOf("bold")]?.style.bold, true);
   assertEquals(row[text.indexOf("inline")]?.style.fg, "#e3b341");
   assertEquals(row[text.indexOf("inline")]?.style.bg, undefined);
@@ -338,7 +287,7 @@ test("long multiline questions wrap without losing text or replacing the answer"
   const answer = "An independent answer.";
   await loaded.history.save({ ...record, question, answer, sessionId: loaded.main.id });
   loaded.tui.commands.run("btw:ask");
-  await waitFor(() => screen(frame).includes(answer));
+  await waitForScreen(frame, answer);
   for (const width of [32, 100]) {
     frame.resize({ width, height: 30 });
     const lines = screen(frame).split("\n");
@@ -377,7 +326,7 @@ test("an arriving answer preserves output focus and the next independent draft",
   const output = loaded.tui.focused;
   assert(output !== undefined && output !== editor);
 
-  await waitFor(() => screen(frame).includes("the new side answer"));
+  await waitForScreen(frame, "the new side answer");
   assertEquals(loaded.tui.focused, output, "Request completion must not steal focus back from the answer.");
   assertEquals(editor.state.text, "the next independent draft");
 

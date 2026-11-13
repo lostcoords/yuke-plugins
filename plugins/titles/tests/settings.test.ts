@@ -4,6 +4,7 @@ import type { ProviderInfo } from "yuke:protocol";
 import { assertEquals, assertRejects, createFrame, folder, test, waitForSettled } from "yuke:test";
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, modelId, resolveModel, type SavedModels } from "../src/models.ts";
+import { rows } from "./support.ts";
 
 const REASONING = { thinking: { kind: "adaptive" }, effort: "high" } as const;
 const PROVIDERS = [
@@ -26,15 +27,6 @@ const PROVIDERS = [
 const CATALOG = { list: async () => ({ providers: PROVIDERS }) } as unknown as Catalog;
 const OPUS = { model: "anthropic/claude-opus", reasoning: "high" } as const;
 const SONNET = { model: "anthropic/claude-sonnet", reasoning: "default" } as const;
-
-function rows(frame: ReturnType<typeof createFrame>): string[] {
-  return frame.frame.cells.map((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .trimEnd(),
-  );
-}
 
 async function dialog(saved?: SavedModels) {
   const frame = createFrame({ width: 76, height: 12 });

@@ -1,13 +1,13 @@
 // The models of subagents: the saved list, the `model` argument, the choice of a model, and the dialog of the list.
 
 import { readTextFile, writeTextFile } from "yuke:fs";
-import type { Catalog, PluginApply, PluginContext, PluginSession, ServiceOf, Services, Sessions } from "yuke:plugins";
+import type { Catalog, PluginApply, PluginSession, Sessions } from "yuke:plugins";
 import type { SessionSettings } from "yuke:protocol";
-import { assertEquals, createFrame, createHost, folder, reply, test, waitForSettled } from "yuke:test";
+import { assert, assertEquals, createFrame, createHost, folder, reply, test, waitForSettled } from "yuke:test";
 import { apply, session } from "../src/index.ts";
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, type SavedModels } from "../src/models.ts";
-import { rowsOf } from "./frame-rows.ts";
+import { rows, withServices } from "./support.ts";
 
 const OPUS = { thinking: { kind: "adaptive" }, effort: "high" };
 const CATALOG = {
@@ -50,12 +50,7 @@ async function opened(file?: string, answers = 0) {
         return real.create(parentSettings as SessionSettings, options);
       },
     };
-    const get = <K extends keyof Services & string>(name: K): ServiceOf<K> => {
-      if (name === "sessions") return sessions as ServiceOf<K>;
-      if (name === "catalog") return CATALOG as ServiceOf<K>;
-      return ctx.get(name);
-    };
-    return apply({ ...ctx, dataDir, get } satisfies PluginContext);
+    return apply({ ...withServices(ctx, { sessions, catalog: CATALOG }), dataDir });
   };
   const pluginSession: PluginSession = (s) => {
     parentSettings ??= s.settings;
@@ -193,7 +188,7 @@ async function dialog(saved?: SavedModels) {
 test("the dialog shows the session model as the default, and a saved model that is not ready", async () => {
   const state = await dialog({ models: [OPUS_ENTRY, GONE_ENTRY] });
   using _frame = state.frame;
-  const shown = rowsOf(state.frame.frame)
+  const shown = rows(state.frame)
     .map((row) => row.trimEnd().replace(/\s{2,}/g, "  "))
     .filter((row) => row.trim() !== "");
 
@@ -217,9 +212,8 @@ test("a add picks a model and a level, and the list saves it", async () => {
   state.frame.key("enter");
   await waitForSettled();
 
-  state.frame.draw();
   assertEquals((await state.stored()).models, [OPUS_ENTRY]);
-  assertEquals(rowsOf(state.frame.frame).join("\n").includes("The model list changes in new sessions."), true);
+  assert(rows(state.frame).join("\n").includes("The model list changes in new sessions."));
 });
 
 test("enter sets the default, the session row clears it, and d removes a model and its default", async () => {

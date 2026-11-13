@@ -1,17 +1,11 @@
 import { writeTextFile } from "yuke:fs";
-import type { ServiceOf, Services, Sessions } from "yuke:plugins";
+import type { Sessions } from "yuke:plugins";
 import { assert, assertEquals, createHost, type Reply, reply, test, waitForSettled } from "yuke:test";
 import { firstMessage, Titles } from "../src/titles.ts";
+import { withServices } from "./support.ts";
 
 const PRIMARY = { model: "anthropic/claude-fable-5", reasoning: "default" };
 const FALLBACK = { model: "openai/gpt-4.1", reasoning: "default" };
-
-async function waitFor(done: () => boolean | Promise<boolean>): Promise<void> {
-  for (let attempt = 0; !(await done()); attempt++) {
-    if (attempt === 200) throw new Error("The expected title state did not arrive.");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-}
 
 /** Hold main rounds so each test can observe the independent title request first. */
 async function opened(replies: readonly Reply[], models = [PRIMARY], renameWhileGenerating = false) {
@@ -35,11 +29,7 @@ async function opened(replies: readonly Reply[], models = [PRIMARY], renameWhile
               return service.get(id);
             },
           };
-          titles = new Titles({
-            ...ctx,
-            get: <K extends keyof Services & string>(name: K): ServiceOf<K> =>
-              name === "sessions" ? (watched as ServiceOf<K>) : ctx.get(name),
-          });
+          titles = new Titles(withServices(ctx, { sessions: watched }));
           return () => titles?.close();
         },
         session(s) {
@@ -77,7 +67,8 @@ test("the first user message gets a short title without changing conversation hi
   ]);
   await using host = state.host;
   const running = state.session.sendMessage("Can you fix login after the access token expires?");
-  await waitFor(async () => (await state.title()) === "Fix login refresh");
+  await waitForSettled();
+  assertEquals(await state.title(), "Fix login refresh");
   state.release();
   await running;
   await state.session.sendMessage("Check the tests too.");
@@ -104,7 +95,8 @@ test("a failed primary request tries the next chosen model", async () => {
   );
   await using host = state.host;
   const running = state.session.sendMessage("Fix the token refresh.");
-  await waitFor(async () => (await state.title()) === "Repair token refresh");
+  await waitForSettled();
+  assertEquals(await state.title(), "Repair token refresh");
   state.release();
   await running;
 
@@ -122,7 +114,8 @@ test("an overlong title falls back and unavailable configured models do not use 
   );
   await using host = state.host;
   const running = state.session.sendMessage("Repair the login bug.");
-  await waitFor(async () => (await state.title()) === "Repair login");
+  await waitForSettled();
+  assertEquals(await state.title(), "Repair login");
   state.release();
   await running;
 
@@ -172,7 +165,8 @@ test("all failed title models retain the initial title and leave the main answer
   );
   await using host = state.host;
   const running = state.session.sendMessage("Fix the broken login.");
-  await waitFor(() => host.notices.some((notice) => notice.text.includes("The session title did not change")));
+  await waitForSettled();
+  assert(host.notices.some((notice) => notice.text.includes("The session title did not change")));
   state.release();
   await running;
 
@@ -187,7 +181,8 @@ test("a stalled title does not delay the main answer and closing cancels it with
   const state = await opened([reply.stall("Partial"), reply.text("Main answer.")], [PRIMARY, FALLBACK]);
   await using host = state.host;
   const running = state.session.sendMessage("Fix login.");
-  await waitFor(() => host.requests.length === 1);
+  await waitForSettled();
+  assertEquals(host.requests.length, 1);
   state.release();
   await running;
   await state.session.close();
@@ -216,7 +211,8 @@ test("notifications do not name sessions and the first displayed message supplie
       content: [{ kind: "userText", text: "Explain this API." }],
       modelContent: [{ kind: "userText", text: "Expanded private instructions." }],
     });
-    await waitFor(async () => (await state.title()) === "Original request title");
+    await waitForSettled();
+    assertEquals(await state.title(), "Original request title");
     state.release();
     await handle.waitForIdle();
     assertEquals((await firstMessage(state.sessions, state.session.id))?.text, "Explain this API.");
@@ -232,7 +228,6 @@ test("a manual rename made during generation takes precedence over the generated
   const state = await opened([reply.text("Generated title"), reply.text("Main answer.")], [PRIMARY], true);
   await using host = state.host;
   const running = state.session.sendMessage("Fix login.");
-  await waitFor(async () => (await state.title()) === "My manual title");
   await waitForSettled();
   assertEquals(await state.title(), "My manual title");
   state.release();

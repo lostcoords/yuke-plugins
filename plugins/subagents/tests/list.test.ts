@@ -1,11 +1,12 @@
 // The list of running subagents under the composer: its rows at each width, and its source on a test host.
 
 import type { ChatPane, ChatReadOnly, ChatService, ComposerView } from "yuke:chat";
-import type { PluginContext, ServiceOf, Services, Sessions } from "yuke:plugins";
+import type { Sessions } from "yuke:plugins";
 import { assertEquals, createFrame, createHost, type Reply, reply, test, waitForSettled } from "yuke:test";
 import { type Canvas, type Mount, TextEditor } from "yuke:tui";
 import { apply, session as pluginSession } from "../src/index.ts";
 import { type ListEntry, listRows } from "../src/list.ts";
+import { withServices } from "./support.ts";
 
 const READ: ListEntry = { label: "Read the store", model: "claude-opus-5-5", started: 0 };
 const CHECK: ListEntry = { label: "Check the tests", model: "claude-opus-5-5", started: 64_000 };
@@ -80,12 +81,7 @@ async function shown(replies: readonly Reply[]) {
         name: "subagents",
         apply: (ctx) => {
           sessions = ctx.get("sessions");
-          const get = <K extends keyof Services & string>(name: K): ServiceOf<K> => {
-            if (name === "tui") return surface.tui as ServiceOf<K>;
-            if (name === "chat") return chat as ServiceOf<K>;
-            return ctx.get(name);
-          };
-          return apply({ ...ctx, get } satisfies PluginContext);
+          return apply(withServices(ctx, { tui: surface.tui, chat }));
         },
         session: pluginSession,
       },
@@ -256,7 +252,11 @@ test("a subagent stays read-only after its session closes", async () => {
 });
 
 test("the waiting row hides while a turn of the parent runs", async () => {
-  const state = await shown([reply.toolCall("spawn_subagent", SPAWN), reply.stall("Parent"), reply.stall("Subagent")]);
+  const state = await shown([
+    reply.toolCalls([{ name: "spawn_subagent", args: SPAWN }]),
+    reply.stall("Parent"),
+    reply.stall("Subagent"),
+  ]);
   using _frame = state.frame;
   await using _host = state.host;
 

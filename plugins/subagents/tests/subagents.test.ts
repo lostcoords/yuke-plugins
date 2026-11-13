@@ -172,7 +172,11 @@ test("a foreground subagent gives the model its id and report, shows the user th
 });
 
 test("a move of a foreground subagent answers the call, and the report reaches the parent", async () => {
-  const state = await opened([reply.toolCall("gate", {}), reply.text("Two tables."), reply.text("Thanks.")]);
+  const state = await opened([
+    reply.toolCalls([{ name: "gate", args: {} }]),
+    reply.text("Two tables."),
+    reply.text("Thanks."),
+  ]);
   const { host, parent, handle, openGate } = state;
   await using _host = host;
   const running = parent.call("spawn_subagent", { ...SPAWN, background: false });
@@ -192,7 +196,11 @@ test("a move of a foreground subagent answers the call, and the report reaches t
 });
 
 test("a message during the run joins the turn of the subagent, and the report comes after its answer", async () => {
-  const state = await opened([reply.toolCall("gate", {}), reply.text("Three indexes."), reply.text("Thanks.")]);
+  const state = await opened([
+    reply.toolCalls([{ name: "gate", args: {} }]),
+    reply.text("Three indexes."),
+    reply.text("Thanks."),
+  ]);
   const { host, parent, openGate } = state;
   await using _host = host;
   await parent.call("spawn_subagent", SPAWN);
@@ -243,7 +251,7 @@ test("a stop while the job starts ends the subagent, and the stop does not hang"
 test("a stop closes the question of the subagent, and a late answer raises no fault", async () => {
   const late = Promise.withResolvers<QuestionAnswer[] | undefined>();
   let signal: AbortSignal | undefined;
-  const state = await opened([reply.toolCall("ask", {})], {
+  const state = await opened([reply.toolCalls([{ name: "ask", args: {} }])], {
     ask: (_request, options) => {
       signal = options?.signal;
       return late.promise;
@@ -309,7 +317,7 @@ test("a turn without a final message reports that, and not the message of an old
 });
 
 test("a cancelled turn reports cancelled, not completed", async () => {
-  const state = await opened([reply.toolCall("gate", {}), reply.text("Thanks.")]);
+  const state = await opened([reply.toolCalls([{ name: "gate", args: {} }]), reply.text("Thanks.")]);
   const { host, parent, list } = state;
   await using _host = host;
 
@@ -326,7 +334,7 @@ test("a cancelled turn reports cancelled, not completed", async () => {
 });
 
 test("a stop drops a message that waits, so no new turn starts", async () => {
-  const state = await opened([reply.toolCall("gate", {})]);
+  const state = await opened([reply.toolCalls([{ name: "gate", args: {} }])]);
   const { host, parent } = state;
   await using _host = host;
   await parent.call("spawn_subagent", SPAWN);
@@ -341,9 +349,12 @@ test("a stop drops a message that waits, so no new turn starts", async () => {
 });
 
 test("a question of the subagent reaches the parent, and its answer returns", async () => {
-  const state = await opened([reply.toolCall("ask", {}), reply.text("It said yes."), reply.text("Thanks.")], {
-    answer: () => [{ id: "go", values: ["Yes"] }],
-  });
+  const state = await opened(
+    [reply.toolCalls([{ name: "ask", args: {} }]), reply.text("It said yes."), reply.text("Thanks.")],
+    {
+      answer: () => [{ id: "go", values: ["Yes"] }],
+    },
+  );
   const { host, parent } = state;
   await using _host = host;
 
