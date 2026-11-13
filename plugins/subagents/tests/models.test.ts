@@ -38,7 +38,7 @@ async function opened(file?: string, answers = 0) {
   const dataDir = folder();
   if (file !== undefined) await writeTextFile("settings.json", file, { cwd: dataDir });
   const created: SessionSettings[] = [];
-  const tools = new Map<string, { readonly parameters: { readonly properties: Record<string, unknown> } }>();
+  const tools = new Map<string, { readonly inputSchema: { readonly properties: Record<string, unknown> } }>();
   const notices: string[] = [];
   let parentSettings: SessionSettings | undefined;
   const pluginApply: PluginApply = (ctx) => {
@@ -78,7 +78,7 @@ async function opened(file?: string, answers = 0) {
 
 const file = (saved: SavedModels) => JSON.stringify(saved);
 const argument = (state: Awaited<ReturnType<typeof opened>>) =>
-  state.tools.get("spawn_subagent")?.parameters.properties.model as { readonly enum?: readonly string[] } | undefined;
+  state.tools.get("spawn_subagent")?.inputSchema.properties.model as { readonly enum?: readonly string[] } | undefined;
 
 test("an empty list gives no model argument, and a subagent uses the session model", async () => {
   const state = await opened(undefined, 1);

@@ -318,7 +318,7 @@ test("two different sessions with the same id refuse a send instead of guessing"
 test("the socket lives in a private folder that closing removes with the registry entry", async () => {
   const state = await opened();
 
-  const entries = await readDir(`${state.dataDir}/peers`);
+  const entries = await Array.fromAsync(readDir(`${state.dataDir}/peers`));
   assertEquals(entries.length, 1);
 
   const folder = `/tmp/yuke-mailbox-${entries[0]?.name.replace(/\.json$/, "")}`;
@@ -326,7 +326,7 @@ test("the socket lives in a private folder that closing removes with the registr
 
   await state.host.close();
 
-  assertEquals(await readDir(`${state.dataDir}/peers`), []);
+  assertEquals(await Array.fromAsync(readDir(`${state.dataDir}/peers`)), []);
   const error = await assertRejects(() => lstat(folder));
   assert(error instanceof FileSystemError);
   assertEquals(error.code, "ENOENT");
@@ -347,7 +347,7 @@ test("a message to a busy session waits for its running tool and reaches the nex
             name: "hold",
             description: "Wait for the test.",
             concurrency: "serial",
-            parameters: { type: "object", properties: {} },
+            inputSchema: { type: "object", properties: {} },
             async execute(_args, context) {
               entered.resolve();
               await Promise.race([

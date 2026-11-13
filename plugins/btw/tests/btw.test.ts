@@ -132,7 +132,7 @@ test("the latest round supplies the cache prefix and no side tool call is execut
             name: "mark",
             description: "Mark a real tool run.",
             concurrency: "serial",
-            parameters: { type: "object", properties: {} },
+            inputSchema: { type: "object", properties: {} },
             execute: () => {
               calls++;
               return "marked";

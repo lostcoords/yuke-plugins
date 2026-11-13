@@ -1,4 +1,4 @@
-import { FileSystemError, mkdir, readDir, readTextFile, remove, writeTextFile } from "yuke:fs";
+import { type DirEntry, FileSystemError, mkdir, readDir, readTextFile, remove, writeTextFile } from "yuke:fs";
 import type { ModelReference } from "yuke:protocol";
 
 export interface HistoryEntry {
@@ -13,8 +13,7 @@ export interface HistoryEntry {
 
 const isSafeId = (value: string): boolean => /^[a-zA-Z0-9_-]+$/.test(value);
 const isMissing = (error: unknown): boolean => error instanceof FileSystemError && error.code === "ENOENT";
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
 function isHistoryEntry(value: unknown): value is HistoryEntry {
   return (
@@ -76,7 +75,7 @@ export class History {
     try {
       sessionIds =
         sessionId === undefined
-          ? (await readDir(root))
+          ? (await Array.fromAsync(readDir(root)))
               .filter((item) => item.isDirectory && isSafeId(item.name))
               .map((item) => item.name)
           : [sessionId];
@@ -87,10 +86,10 @@ export class History {
 
     for (const currentSessionId of sessionIds) {
       const baseDir = `${root}/${currentSessionId}`;
-      let files: Awaited<ReturnType<typeof readDir>>;
+      let files: DirEntry[];
 
       try {
-        files = await readDir(baseDir);
+        files = await Array.fromAsync(readDir(baseDir));
       } catch (error) {
         if (isMissing(error)) continue;
         throw error;
@@ -101,20 +100,14 @@ export class History {
 
         try {
           const value: unknown = JSON.parse(await readTextFile(file.name, { cwd: baseDir, fatal: true }));
-          if (
-            !isHistoryEntry(value) ||
-            value.sessionId !== currentSessionId ||
-            `${value.id}.json` !== file.name
-          ) {
+          if (!isHistoryEntry(value) || value.sessionId !== currentSessionId || `${value.id}.json` !== file.name) {
             throw new Error("Invalid or unsupported history record.");
           }
 
           entries.push(value);
         } catch (error) {
           if (isMissing(error)) continue;
-          warnings.push(
-            `${currentSessionId}/${file.name}: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          warnings.push(`${currentSessionId}/${file.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
     }

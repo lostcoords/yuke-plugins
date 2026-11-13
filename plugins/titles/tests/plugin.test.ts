@@ -47,7 +47,7 @@ test("the settings command saves a picked model and regenerate renames the focus
   tui.panes.split(() => ({ draw: (canvas) => canvas.text(0, 0, "Main conversation") }));
   await session.sendMessage("Fix login after the access token expires.");
   assert(sessions !== undefined);
-  assertEquals((await sessions.get(session.id)).session.title, "Fix login after the access token expires.");
+  assertEquals((await sessions.get(session.id)).title, "Fix login after the access token expires.");
   assertEquals(host.requests.length, 1);
 
   assertEquals(tui.commands.run("titles:settings"), true);
@@ -68,7 +68,7 @@ test("the settings command saves a picked model and regenerate renames the focus
 
   assertEquals(tui.commands.run("titles:regenerate"), true);
   await waitForSettled();
-  assertEquals((await sessions.get(session.id)).session.title, "Fix login refresh");
+  assertEquals((await sessions.get(session.id)).title, "Fix login refresh");
   assertEquals(host.requests[1]?.messages, [{ role: "user", text: "Fix login after the access token expires." }]);
   assertEquals(host.notices.at(-1)?.text, "Session title: Fix login refresh");
 });

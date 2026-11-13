@@ -145,7 +145,8 @@ def scenario(width, height, light, inline, resume, main_running=True, cancel_sid
                                         index += 4
                                     index += 1
                             else:
-                                assert sequence[-1] in 'mhlucq' , f'Unsupported terminal control: {sequence!r}'
+                                # `t` pushes and pops the window title, which changes no cell.
+                                assert sequence[-1] in 'mhlucqt', f'Unsupported terminal control: {sequence!r}'
                         offset += len(sequence)
                         continue
                     character = text[offset]

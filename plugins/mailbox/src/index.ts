@@ -45,7 +45,7 @@ export function session(s: SessionContext): undefined {
     description: LIST_DESCRIPTION,
     concurrency: "parallel",
     deferLoading: true,
-    parameters: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {} },
     async execute(_args, context) {
       return JSON.stringify(await mailbox.list(s, context.signal));
     },
@@ -56,7 +56,7 @@ export function session(s: SessionContext): undefined {
     description: SEND_DESCRIPTION,
     concurrency: "parallel",
     deferLoading: true,
-    parameters: {
+    inputSchema: {
       type: "object",
       properties: {
         to: {

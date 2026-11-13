@@ -232,7 +232,7 @@ export class Mailbox {
 
   /** The agents of each endpoint in the registry, in the order of the runtime ids. The endpoints answer in parallel. */
   async #peers(signal: AbortSignal): Promise<Peer[]> {
-    const runtimes = (await readDir(this.#registry, { signal }))
+    const runtimes = (await Array.fromAsync(readDir(this.#registry, { signal })))
       .flatMap((entry) => {
         const runtime = entry.isFile ? ENTRY.exec(entry.name)?.[1] : undefined;
         return runtime === undefined ? [] : [runtime];
@@ -286,8 +286,8 @@ export class Mailbox {
     return {
       id: agentId(s.cwd, s.sessionId),
       sessionId: s.sessionId,
-      title: row.session.title ?? null,
-      folder: row.session.cwd,
+      title: row.title ?? null,
+      folder: row.cwd,
       activity: row.state,
     };
   }

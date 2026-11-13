@@ -130,7 +130,7 @@ async function shown(replies: readonly Reply[]) {
   const rowsOf = (id: string | undefined, height?: number) => drawn(below[0], id, height);
   const waiting = (id: string | undefined) => drawn(above[0], id).map((row) => row.text);
   const children = async () =>
-    (await (sessions as unknown as Sessions).list({ parent: parent.id })).sessions.map((row) => row.session.sessionId);
+    (await (sessions as unknown as Sessions).list({ parent: parent.id })).sessions.map((row) => row.sessionId);
   return {
     frame,
     surface,

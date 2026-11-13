@@ -21,9 +21,9 @@ WAIT = 15
 SPAWN = {'description': 'Read the store', 'message': 'Read the store.', 'background': True}
 # A child tool that asks the user, as a tool of another plugin does.
 ASKER = """export function session(s) {
-  s.tools.define({
+  s.tools.add({
     name: 'ask_user', description: 'Ask.', concurrency: 'serial',
-    parameters: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: {} },
     async execute(_args, { signal }) {
       const question = { id: 'go', header: 'Go', question: 'Go?', options: [{ label: 'Yes' }, { label: 'No' }] };
       return JSON.stringify(await s.ask({ questions: [question] }, { signal }));
@@ -195,7 +195,7 @@ def new_parent(client, cwd):
 
 
 def children(client, parent):
-    return [row['session']['sessionId'] for row in client.call('session/list', {'parent': parent})['sessions']]
+    return [row['sessionId'] for row in client.call('session/list', {'parent': parent})['sessions']]
 
 
 def send(client, session, value):
@@ -241,7 +241,7 @@ def background_flow(client, model, cwd):
         'the transcript of the subagent',
         lambda message: message.get('params', {}).get('sessionId') == item['id'] and 'Two tables.' in json.dumps(message),
     )
-    assert client.call('session/get', {'sessionId': item['id']})['session']['parent'] == parent
+    assert client.call('session/get', {'sessionId': item['id']})['parent'] == parent
 
     send(client, parent, 'And the indexes?')
     second = client.until('the second report', ended)
