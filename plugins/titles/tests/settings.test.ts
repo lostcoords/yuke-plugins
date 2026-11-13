@@ -1,7 +1,7 @@
 import { readTextFile, writeTextFile } from "yuke:fs";
 import type { Catalog } from "yuke:plugins";
 import type { ProviderInfo } from "yuke:protocol";
-import { createFrame, equal, folder, rejects, waitForSettled, test } from "yuke:test";
+import { assertEquals, assertRejects, createFrame, folder, test, waitForSettled } from "yuke:test";
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, modelId, resolveModel, type SavedModels } from "../src/models.ts";
 
@@ -54,14 +54,14 @@ test("a missing or empty settings file reads as an empty model list, and saved m
   const dataDir = folder();
   const list = new ModelList(dataDir, CATALOG);
 
-  equal(await list.read(), { models: [] });
+  assertEquals(await list.read(), { models: [] });
   await writeTextFile("settings.json", "  \n", { cwd: dataDir });
-  equal(await list.read(), { models: [] });
+  assertEquals(await list.read(), { models: [] });
   await writeTextFile("settings.json", "{}", { cwd: dataDir });
-  equal(await list.read(), { models: [] });
+  assertEquals(await list.read(), { models: [] });
   await list.write({ models: [OPUS, SONNET] });
-  equal(await list.read(), { models: [OPUS, SONNET] });
-  equal(JSON.parse(await readTextFile("settings.json", { cwd: dataDir })), { models: [OPUS, SONNET] });
+  assertEquals(await list.read(), { models: [OPUS, SONNET] });
+  assertEquals(JSON.parse(await readTextFile("settings.json", { cwd: dataDir })), { models: [OPUS, SONNET] });
 });
 
 test("saved entries need nonempty model and reasoning strings", async () => {
@@ -71,24 +71,24 @@ test("saved entries need nonempty model and reasoning strings", async () => {
     cwd: dataDir,
   });
 
-  const error = await rejects(list.read());
-  equal(String(error).includes("settings.json needs"), true);
+  const error = await assertRejects(() => list.read());
+  assertEquals(String(error).includes("settings.json needs"), true);
 });
 
 test("model ids and provider resolution use the selected reasoning settings", () => {
-  equal(modelId(OPUS), "anthropic/claude-opus:high");
-  equal(resolveModel(OPUS, PROVIDERS), {
+  assertEquals(modelId(OPUS), "anthropic/claude-opus:high");
+  assertEquals(resolveModel(OPUS, PROVIDERS), {
     model: { provider: "anthropic", model: "claude-opus" },
     reasoning: { thinking: { kind: "adaptive" }, effort: "high" },
   });
-  equal(resolveModel({ model: "gone/model", reasoning: "high" }, PROVIDERS), undefined);
+  assertEquals(resolveModel({ model: "gone/model", reasoning: "high" }, PROVIDERS), undefined);
 });
 
 test("an empty dialog explains setup and an add saves the selected model and reasoning", async () => {
   const state = await dialog();
   using frame = state.frame;
 
-  equal(
+  assertEquals(
     rows(frame).some((row) => row.includes("No title models yet. Press a to add one.")),
     true,
   );
@@ -99,8 +99,8 @@ test("an empty dialog explains setup and an add saves the selected model and rea
   frame.key("enter");
   await waitForSettled();
 
-  equal(await state.stored(), { models: [OPUS] });
-  equal(state.failures, []);
+  assertEquals(await state.stored(), { models: [OPUS] });
+  assertEquals(state.failures, []);
 });
 
 test("arrow keys select without reordering, and explicit move actions reorder primary and fallback models", async () => {
@@ -109,12 +109,12 @@ test("arrow keys select without reordering, and explicit move actions reorder pr
 
   frame.key("down");
   frame.key("up");
-  equal((await state.stored()).models, [OPUS, SONNET]);
+  assertEquals((await state.stored()).models, [OPUS, SONNET]);
   frame.key("down");
   frame.key("U");
   await waitForSettled();
-  equal((await state.stored()).models, [SONNET, OPUS]);
-  equal(
+  assertEquals((await state.stored()).models, [SONNET, OPUS]);
+  assertEquals(
     rows(frame).some((row) => row.includes("primary")),
     true,
   );
@@ -130,12 +130,12 @@ test("a duplicate add leaves one row, and remove can empty the list", async () =
   await waitForSettled();
   frame.key("enter");
   await waitForSettled();
-  equal((await state.stored()).models, [OPUS]);
+  assertEquals((await state.stored()).models, [OPUS]);
 
   frame.key("d");
   await waitForSettled();
-  equal(await state.stored(), { models: [] });
-  equal(
+  assertEquals(await state.stored(), { models: [] });
+  assertEquals(
     rows(frame).some((row) => row.includes("No title models yet")),
     true,
   );
@@ -149,8 +149,8 @@ test("adding a model without a ready provider explains how to finish setup", asy
   frame.key("a");
   await waitForSettled();
 
-  equal(failures, ["No title models are available. Configure a provider in Yuke first."]);
-  equal(
+  assertEquals(failures, ["No title models are available. Configure a provider in Yuke first."]);
+  assertEquals(
     rows(frame).some((row) => row.includes("No title models yet")),
     true,
   );

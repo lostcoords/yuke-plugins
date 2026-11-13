@@ -1,5 +1,5 @@
 import { connect } from "yuke:net";
-import { assert, equal, listenOnTemporarySocket, rejects, waitForSettled, test } from "yuke:test";
+import { assert, assertEquals, assertRejects, listenOnTemporarySocket, test, waitForSettled } from "yuke:test";
 import { readFrame, request, serve, writeFrame } from "../src/transport.ts";
 
 /** A short socket path that no listener holds. */
@@ -21,7 +21,7 @@ test("a JSON frame survives split UTF-8 bytes, embedded newlines, and a large me
   await client.write(bytes.slice(0, character + 1));
   await client.write(bytes.slice(character + 1, character + 2));
   await client.write(bytes.slice(character + 2));
-  equal(await received, message);
+  assertEquals(await received, message);
 });
 
 test("the request returns a server result and reports a handler failure without stopping later requests", async () => {
@@ -38,11 +38,11 @@ test("the request returns a server result and reports a handler failure without 
     (error) => errors.push(error),
   );
   try {
-    const failed = await rejects(request(path, "fail", controller.signal));
+    const failed = await assertRejects(() => request(path, "fail", controller.signal));
     assert(failed instanceof Error);
-    equal(failed.message, "the session is closed");
-    equal(await request(path, "ready", controller.signal), { answer: "ready" });
-    equal(errors, []);
+    assertEquals(failed.message, "the session is closed");
+    assertEquals(await request(path, "ready", controller.signal), { answer: "ready" });
+    assertEquals(errors, []);
   } finally {
     await close();
   }
@@ -56,9 +56,9 @@ test("a truncated frame fails instead of delivering a partial message", async ()
   const received = readFrame(peer);
   await client.write(new TextEncoder().encode('{"message":"partial"}'));
   client.close();
-  const error = await rejects(received);
+  const error = await assertRejects(() => received);
   assert(error instanceof Error);
-  equal(error.message, "the peer closed before the message ended");
+  assertEquals(error.message, "the peer closed before the message ended");
 });
 
 test("stopping the server closes accepted clients that have not sent a frame", async () => {
@@ -77,7 +77,7 @@ test("stopping the server closes accepted clients that have not sent a frame", a
   controller.abort();
   await close();
   const reader = client.readable.getReader();
-  equal(await reader.read(), { value: undefined, done: true });
+  assertEquals(await reader.read(), { value: undefined, done: true });
   reader.releaseLock();
 });
 
@@ -87,11 +87,11 @@ test("a request waits for a complete response frame and rejects a response witho
   const accepted = listener.accept();
   const pending = request(listener.path, { method: "list" }, controller.signal);
   using peer = await accepted;
-  equal(await readFrame(peer), { method: "list" });
+  assertEquals(await readFrame(peer), { method: "list" });
   await writeFrame(peer, { other: "missing" });
-  const error = await rejects(pending);
+  const error = await assertRejects(() => pending);
   assert(error instanceof Error);
-  equal(error.message, "the peer returned no result");
+  assertEquals(error.message, "the peer returned no result");
 });
 
 test("cancelling a request stops a wait for a response with the abort reason", async () => {
@@ -100,8 +100,8 @@ test("cancelling a request stops a wait for a response with the abort reason", a
   const accepted = listener.accept();
   const pending = request(listener.path, { method: "list" }, controller.signal);
   using peer = await accepted;
-  equal(await readFrame(peer), { method: "list" });
+  assertEquals(await readFrame(peer), { method: "list" });
   const reason = new Error("the user cancelled");
   controller.abort(reason);
-  equal(await rejects(pending), reason);
+  assertEquals(await assertRejects(() => pending), reason);
 });

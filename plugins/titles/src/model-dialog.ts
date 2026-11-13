@@ -140,7 +140,7 @@ export async function openModelDialog(tui: Tui, list: ModelList, fail: (text: st
   };
 
   tui.dialog({
-    title: () => "Title models",
+    title: "Title models",
     body,
     keys: [
       { key: "a", label: "add", run: () => run(add()) },

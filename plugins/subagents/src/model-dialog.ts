@@ -100,7 +100,7 @@ export async function openModelDialog(tui: Tui, list: ModelList, fail: (text: st
   };
 
   tui.dialog({
-    title: () => "Subagent models",
+    title: "Subagent models",
     body,
     keys: [
       { key: "a", label: "add", run: () => run(add()) },

@@ -1,6 +1,6 @@
 import { writeTextFile } from "yuke:fs";
 import type { ServiceOf, Services, Sessions } from "yuke:plugins";
-import { assert, createHost, equal, type Reply, reply, waitForSettled, test } from "yuke:test";
+import { assert, assertEquals, createHost, type Reply, reply, test, waitForSettled } from "yuke:test";
 import { firstMessage, Titles } from "../src/titles.ts";
 
 const PRIMARY = { model: "anthropic/claude-fable-5", reasoning: "default" };
@@ -82,15 +82,15 @@ test("the first user message gets a short title without changing conversation hi
   await running;
   await state.session.sendMessage("Check the tests too.");
 
-  equal(await state.title(), "Fix login refresh");
-  equal(host.requests.length, 3);
-  equal(
+  assertEquals(await state.title(), "Fix login refresh");
+  assertEquals(host.requests.length, 3);
+  assertEquals(
     [host.requests[0]?.tools, host.requests[0]?.messages],
     [[], [{ role: "user", text: "Can you fix login after the access token expires?" }]],
   );
-  equal((host.requests[0]?.body as { model: string } | undefined)?.model, "claude-fable-5");
-  equal((host.requests[1]?.body as { model: string } | undefined)?.model, "MiniMax-M3");
-  equal(host.requests[2]?.messages, [
+  assertEquals((host.requests[0]?.body as { model: string } | undefined)?.model, "claude-fable-5");
+  assertEquals((host.requests[1]?.body as { model: string } | undefined)?.model, "MiniMax-M3");
+  assertEquals(host.requests[2]?.messages, [
     { role: "user", text: "Can you fix login after the access token expires?" },
     { role: "assistant", text: "The refresh is fixed." },
     { role: "user", text: "Check the tests too." },
@@ -108,8 +108,8 @@ test("a failed primary request tries the next chosen model", async () => {
   state.release();
   await running;
 
-  equal(await state.title(), "Repair token refresh");
-  equal(
+  assertEquals(await state.title(), "Repair token refresh");
+  assertEquals(
     host.requests.map((request) => (request.body as { model: string }).model),
     ["claude-fable-5", "gpt-4.1", "MiniMax-M3"],
   );
@@ -126,8 +126,8 @@ test("an overlong title falls back and unavailable configured models do not use 
   state.release();
   await running;
 
-  equal(await state.title(), "Repair login");
-  equal(
+  assertEquals(await state.title(), "Repair login");
+  assertEquals(
     host.requests.map((request) => (request.body as { model: string }).model),
     ["claude-fable-5", "gpt-4.1", "MiniMax-M3"],
   );
@@ -138,12 +138,12 @@ test("an empty model list leaves automatic naming off and later settings work wi
   await using host = state.host;
   state.release();
   await state.session.sendMessage("First task.");
-  equal([await state.title(), host.requests.length], ["First task.", 1]);
+  assertEquals([await state.title(), host.requests.length], ["First task.", 1]);
 
   await state.titles.models.write({ models: [PRIMARY] });
   await state.titles.regenerate(state.session.id);
-  equal(await state.title(), "Review API changes");
-  equal(host.requests.length, 2);
+  assertEquals(await state.title(), "Review API changes");
+  assertEquals(host.requests.length, 2);
 });
 
 test("manual names and child sessions keep their titles", async () => {
@@ -158,11 +158,11 @@ test("manual names and child sessions keep their titles", async () => {
   try {
     await child.sendMessage({ content: [{ kind: "userText", text: "Review login." }] });
     await child.waitForIdle();
-    equal((await state.sessions.get(childId)).session.title, "Review login.");
+    assertEquals((await state.sessions.get(childId)).session.title, "Review login.");
   } finally {
     controller.abort();
   }
-  equal([await state.title(), host.requests.length], ["My chosen title", 2]);
+  assertEquals([await state.title(), host.requests.length], ["My chosen title", 2]);
 });
 
 test("all failed title models retain the initial title and leave the main answer usable", async () => {
@@ -176,8 +176,8 @@ test("all failed title models retain the initial title and leave the main answer
   state.release();
   await running;
 
-  equal([await state.title(), host.requests.length], ["Fix the broken login.", 3]);
-  equal(
+  assertEquals([await state.title(), host.requests.length], ["Fix the broken login.", 3]);
+  assertEquals(
     state.session.transcript.entries.filter((entry) => entry.kind === "text").map((entry) => entry.text),
     ["Main answer."],
   );
@@ -193,8 +193,8 @@ test("a stalled title does not delay the main answer and closing cancels it with
   await state.session.close();
   await state.titles.close();
 
-  equal(host.requests.length, 2);
-  equal(
+  assertEquals(host.requests.length, 2);
+  assertEquals(
     state.session.transcript.entries.filter((entry) => entry.kind === "text").map((entry) => entry.text),
     ["Main answer."],
   );
@@ -209,7 +209,7 @@ test("notifications do not name sessions and the first displayed message supplie
   try {
     await handle.notifyModel({ display: "Background job finished.", text: "A job finished." });
     await handle.waitForIdle();
-    equal([await state.title(), host.requests.length], [undefined, 1]);
+    assertEquals([await state.title(), host.requests.length], [undefined, 1]);
     // The displayed request, not the expanded model-only prompt, supplies the title.
     state.hold();
     await handle.sendMessage({
@@ -219,8 +219,8 @@ test("notifications do not name sessions and the first displayed message supplie
     await waitFor(async () => (await state.title()) === "Original request title");
     state.release();
     await handle.waitForIdle();
-    equal((await firstMessage(state.sessions, state.session.id))?.text, "Explain this API.");
-    equal(host.requests.find((request) => request.tools.length === 0)?.messages, [
+    assertEquals((await firstMessage(state.sessions, state.session.id))?.text, "Explain this API.");
+    assertEquals(host.requests.find((request) => request.tools.length === 0)?.messages, [
       { role: "user", text: "Explain this API." },
     ]);
   } finally {
@@ -234,10 +234,10 @@ test("a manual rename made during generation takes precedence over the generated
   const running = state.session.sendMessage("Fix login.");
   await waitFor(async () => (await state.title()) === "My manual title");
   await waitForSettled();
-  equal(await state.title(), "My manual title");
+  assertEquals(await state.title(), "My manual title");
   state.release();
   await running;
   await state.titles.close();
 
-  equal([await state.title(), host.requests.length], ["My manual title", 2]);
+  assertEquals([await state.title(), host.requests.length], ["My manual title", 2]);
 });

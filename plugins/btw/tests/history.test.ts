@@ -1,5 +1,5 @@
 import { mkdir, readTextFile, writeTextFile } from "yuke:fs";
-import { assert, equal, folder, rejects, test } from "yuke:test";
+import { assert, assertEquals, assertRejects, folder, test } from "yuke:test";
 import { History } from "../src/history.ts";
 
 const sample = {
@@ -12,21 +12,11 @@ const sample = {
 test("saved exchanges survive a new history reader and contain only text and metadata", async () => {
   const saved = await new History(folder()).save(sample);
   const reopened = await new History(folder()).list("main-session");
-  equal(reopened, { entries: [saved], warnings: [] });
-  const stored = JSON.parse(
-    await readTextFile(`history/main-session/${saved.id}.json`, { cwd: folder() }),
-  );
-  equal(Object.keys(stored).sort(), [
-    "answer",
-    "createdAt",
-    "id",
-    "model",
-    "question",
-    "sessionId",
-    "version",
-  ]);
-  equal(stored.question, "Which file?");
-  equal(stored.answer, "src/main.ts");
+  assertEquals(reopened, { entries: [saved], warnings: [] });
+  const stored = JSON.parse(await readTextFile(`history/main-session/${saved.id}.json`, { cwd: folder() }));
+  assertEquals(Object.keys(stored).sort(), ["answer", "createdAt", "id", "model", "question", "sessionId", "version"]);
+  assertEquals(stored.question, "Which file?");
+  assertEquals(stored.answer, "src/main.ts");
 });
 
 test("concurrent completed answers do not replace each other and session histories stay separate", async () => {
@@ -36,15 +26,12 @@ test("concurrent completed answers do not replace each other and session histori
     history.save({ ...sample, question: "second" }),
     history.save({ ...sample, sessionId: "another-session", question: "other" }),
   ]);
-  equal((await history.list("main-session")).entries.map((item) => item.question).sort(), [
-    "first",
-    "second",
-  ]);
-  equal(
+  assertEquals((await history.list("main-session")).entries.map((item) => item.question).sort(), ["first", "second"]);
+  assertEquals(
     (await history.list("another-session")).entries.map((item) => item.question),
     ["other"],
   );
-  equal((await history.list()).entries.length, 3);
+  assertEquals((await history.list()).entries.length, 3);
 });
 
 test("history is newest first, independent of directory enumeration order", async () => {
@@ -55,7 +42,7 @@ test("history is newest first, independent of directory enumeration order", asyn
   newer.createdAt = 2;
   for (const item of [older, newer])
     await writeTextFile(`history/main-session/${item.id}.json`, JSON.stringify(item), { cwd: folder() });
-  equal(
+  assertEquals(
     (await history.list()).entries.map((item) => item.question),
     ["newer", "Which file?"],
   );
@@ -63,8 +50,8 @@ test("history is newest first, independent of directory enumeration order", asyn
 
 test("missing history is empty, not a failure", async () => {
   const history = new History(folder());
-  equal(await history.list(), { entries: [], warnings: [] });
-  equal(await history.list("main-session"), { entries: [], warnings: [] });
+  assertEquals(await history.list(), { entries: [], warnings: [] });
+  assertEquals(await history.list("main-session"), { entries: [], warnings: [] });
 });
 
 test("corrupt and unsupported records are reported without hiding valid records or changing disk contents", async () => {
@@ -79,10 +66,10 @@ test("corrupt and unsupported records are reported without hiding valid records 
   for (const [path, text] of Object.entries(files))
     await writeTextFile(`history/main-session/${path}`, text, { cwd: folder() });
   const result = await history.list();
-  equal(result.entries, [saved]);
-  equal(result.warnings.length, 4);
+  assertEquals(result.entries, [saved]);
+  assertEquals(result.warnings.length, 4);
   for (const [path, text] of Object.entries(files))
-    equal(await readTextFile(`history/main-session/${path}`, { cwd: folder() }), text);
+    assertEquals(await readTextFile(`history/main-session/${path}`, { cwd: folder() }), text);
 });
 
 test("deleting an exchange is repeatable and does not delete another session or unrelated plugin data", async () => {
@@ -92,22 +79,22 @@ test("deleting an exchange is repeatable and does not delete another session or 
   await writeTextFile("settings.json", "keep", { cwd: folder() });
   await history.remove(saved);
   await history.remove(saved);
-  equal((await history.list()).entries, [other]);
-  equal(await readTextFile("settings.json", { cwd: folder() }), "keep");
+  assertEquals((await history.list()).entries, [other]);
+  assertEquals(await readTextFile("settings.json", { cwd: folder() }), "keep");
 });
 
 test("invalid storage keys cannot escape the plugin history directory", async () => {
   const history = new History(folder());
-  await rejects(history.save({ ...sample, sessionId: "../escape" }));
-  await rejects(history.list("../escape"));
+  await assertRejects(() => history.save({ ...sample, sessionId: "../escape" }));
+  await assertRejects(() => history.list("../escape"));
   const saved = await history.save(sample);
-  await rejects(history.remove({ ...saved, id: "../../escape" }));
-  equal((await history.list()).entries, [saved]);
+  await assertRejects(() => history.remove({ ...saved, id: "../../escape" }));
+  assertEquals((await history.list()).entries, [saved]);
 });
 
 test("a failed disk write is reported rather than pretending an answer was saved", async () => {
   await mkdir(`${folder()}/history`);
   await writeTextFile("history/main-session", "not a directory", { cwd: folder() });
-  const error = await rejects(new History(folder()).save(sample));
+  const error = await assertRejects(() => new History(folder()).save(sample));
   assert(error instanceof Error);
 });

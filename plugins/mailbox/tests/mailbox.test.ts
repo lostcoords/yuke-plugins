@@ -1,7 +1,7 @@
 import { FileSystemError, lstat, mkdir, readDir, remove, writeTextFile } from "yuke:fs";
 import { listen } from "yuke:net";
 import type { Sessions } from "yuke:plugins";
-import { assert, createHost, equal, type Reply, rejects, reply, type TestSession, test } from "yuke:test";
+import { assert, assertEquals, assertRejects, createHost, type Reply, reply, type TestSession, test } from "yuke:test";
 import { apply as subagentsApply, session as subagentsSession } from "../../subagents/src/index.ts";
 import { apply, session } from "../src/index.ts";
 import { type Agent, agentId, type Sender } from "../src/mailbox.ts";
@@ -42,7 +42,7 @@ async function opened(replies: readonly Reply[] = []) {
 /** Read the result as an agent does, and fail if the call failed. */
 async function list(agent: TestSession): Promise<Listing> {
   const result = await agent.call("mailbox_list_agents", {});
-  equal(result.isError, false);
+  assertEquals(result.isError, false);
 
   return JSON.parse(result.text) as Listing;
 }
@@ -54,7 +54,7 @@ function send(agent: TestSession, to: string, message: string) {
 
 /** Check that a call failed with `text` in its error. */
 function failed(result: { readonly isError: boolean; readonly text: string }, text: string): void {
-  equal(result.isError, true);
+  assertEquals(result.isError, true);
   assert(result.text.includes(text), result.text);
 }
 
@@ -113,13 +113,13 @@ function serving(socket: string, handle: (value: unknown) => Promise<unknown>) {
 test("an agent id is the folder name and four characters of the random end of the session id", () => {
   const sessionId = "019a5c2e-1111-7222-8333-00000000abcd";
 
-  equal(agentId("/Users/me/Work/yuke-plugins", sessionId), "yuke-plugins-0xxp");
-  equal(agentId("/Users/me/Work/My Project!/", sessionId), "my-project-0xxp");
-  equal(agentId("/", sessionId), "session-0xxp");
-  equal(agentId("/srv/日本語", sessionId), "session-0xxp");
+  assertEquals(agentId("/Users/me/Work/yuke-plugins", sessionId), "yuke-plugins-0xxp");
+  assertEquals(agentId("/Users/me/Work/My Project!/", sessionId), "my-project-0xxp");
+  assertEquals(agentId("/", sessionId), "session-0xxp");
+  assertEquals(agentId("/srv/日本語", sessionId), "session-0xxp");
 
   // Sessions of the same moment share the start of the id, so only the end tells them apart.
-  equal(agentId("/w/api", "019a5c2e-1111-7222-8333-000000000001") === agentId("/w/api", sessionId), false);
+  assertEquals(agentId("/w/api", "019a5c2e-1111-7222-8333-000000000001") === agentId("/w/api", sessionId), false);
 });
 
 test("agents discover other open sessions with their ids, current titles and folders, but not themselves", async () => {
@@ -131,9 +131,9 @@ test("agents discover other open sessions with their ids, current titles and fol
   const result = await list(state.first);
 
   const folder = state.second.settings.cwd;
-  equal(result.agents, [{ id: state.target, title: "Review the API", folder, activity: "idle" }]);
-  equal(other.self, state.target);
-  equal(
+  assertEquals(result.agents, [{ id: state.target, title: "Review the API", folder, activity: "idle" }]);
+  assertEquals(other.self, state.target);
+  assertEquals(
     other.agents.map((agent) => agent.id),
     [result.self],
   );
@@ -146,18 +146,18 @@ test("a direct message wakes an idle session and reaches the model as an agent n
   const from = (await list(state.first)).self;
 
   const result = await send(state.first, state.target, "The migration is ready.\nUse tenant_id.");
-  equal(result.isError, false);
-  equal(JSON.parse(result.text), { status: "queued", to: state.target });
+  assertEquals(result.isError, false);
+  assertEquals(JSON.parse(result.text), { status: "queued", to: state.target });
 
   await idle(state.sessions, state.second.id);
-  equal(host.requests.length, 1);
+  assertEquals(host.requests.length, 1);
 
   // The user sees the id and a short title.
   const shown = state.second.transcript.entries.find(
     (entry) => entry.kind === "input" && entry.source.kind === "plugin",
   );
   assert(shown?.kind === "input");
-  equal(shown.content, [
+  assertEquals(shown.content, [
     {
       kind: "userText",
       text: `Message from ${from} (Plan the database migration for the ten…): The migration is ready.\nUse tenant_id.`,
@@ -169,12 +169,12 @@ test("a direct message wakes an idle session and reaches the model as an agent n
   assert(text.includes("Message from another Yuke session, not the user."), text);
 
   const line = text.split("\n").at(-1)?.replace("</system_notification>", "") ?? "";
-  equal(JSON.parse(line) as { from: Sender; message: string }, {
+  assertEquals(JSON.parse(line) as { from: Sender; message: string }, {
     from: { id: from, title: "Plan the database migration for the tenants", folder: state.first.settings.cwd },
     message: "The migration is ready.\nUse tenant_id.",
   });
 
-  equal(
+  assertEquals(
     host.notices.filter((notice) => notice.level === "error"),
     [],
   );
@@ -189,7 +189,7 @@ test("child sessions have no mailbox and do not appear in discovery", async () =
   const handle = await state.sessions.open(child, { tail: 0, signal: controller.signal, onEvent() {} });
 
   try {
-    equal(
+    assertEquals(
       (await list(state.first)).agents.map((agent) => agent.id),
       [state.target],
     );
@@ -200,8 +200,8 @@ test("child sessions have no mailbox and do not appear in discovery", async () =
     controller.abort();
   }
 
-  equal(host.requests.length, 1);
-  equal(host.requests[0]?.system.includes("<mailbox>"), false);
+  assertEquals(host.requests.length, 1);
+  assertEquals(host.requests[0]?.system.includes("<mailbox>"), false);
 });
 
 test("a closed session leaves discovery and a message to its old id fails", async () => {
@@ -209,10 +209,10 @@ test("a closed session leaves discovery and a message to its old id fails", asyn
   await using host = state.host;
 
   await state.second.close();
-  equal((await list(state.first)).agents, []);
+  assertEquals((await list(state.first)).agents, []);
 
   failed(await send(state.first, state.target, "Are you there?"), "the target session is no longer open");
-  equal(host.requests.length, 0);
+  assertEquals(host.requests.length, 0);
 });
 
 test("empty messages, invalid ids, and the own id fail before they can queue work", async () => {
@@ -226,7 +226,7 @@ test("empty messages, invalid ids, and the own id fail before they can queue wor
   }
 
   failed(await send(state.first, (await list(state.first)).self, "Hello"), "the target is your own id");
-  equal(host.requests.length, 0);
+  assertEquals(host.requests.length, 0);
 });
 
 test("discovery removes the entry and socket folder of an endpoint that died without closing", async () => {
@@ -237,14 +237,14 @@ test("discovery removes the entry and socket folder of an endpoint that died wit
   // A file that is not an entry stays.
   await writeTextFile(`${state.dataDir}/peers/notes.txt`, "keep");
 
-  equal(
+  assertEquals(
     (await list(state.first)).agents.map((agent) => agent.id),
     [state.target],
   );
 
-  equal(await exists(dead.entry), false);
-  equal(await exists(dead.folder), false);
-  equal(await exists(`${state.dataDir}/peers/notes.txt`), true);
+  assertEquals(await exists(dead.entry), false);
+  assertEquals(await exists(dead.folder), false);
+  assertEquals(await exists(`${state.dataDir}/peers/notes.txt`), true);
 });
 
 test("an endpoint that never answers is skipped after a timeout and stays registered", async () => {
@@ -256,13 +256,13 @@ test("an endpoint that never answers is skipped after a timeout and stays regist
   using _listener = listen({ path: hung.socket });
 
   const started = Date.now();
-  equal(
+  assertEquals(
     (await list(state.first)).agents.map((agent) => agent.id),
     [state.target],
   );
 
   assert(Date.now() - started < 5000);
-  equal(await exists(hung.entry), true);
+  assertEquals(await exists(hung.entry), true);
 });
 
 test("an endpoint with a broken answer is skipped without breaking discovery", async () => {
@@ -271,7 +271,7 @@ test("an endpoint with a broken answer is skipped without breaking discovery", a
   await using broken = await endpoint(state.dataDir);
   await using _server = serving(broken.socket, async () => [{ id: 42 }]);
 
-  equal(
+  assertEquals(
     (await list(state.first)).agents.map((agent) => agent.id),
     [state.target],
   );
@@ -291,15 +291,15 @@ test("during a reload the same session from two endpoints is one agent, and a se
     throw new Error("the target session is no longer open");
   });
 
-  equal(
+  assertEquals(
     (await list(state.first)).agents.map((agent) => agent.id),
     [state.target],
   );
 
-  equal((await send(state.first, state.target, "After the reload.")).isError, false);
+  assertEquals((await send(state.first, state.target, "After the reload.")).isError, false);
 
   await idle(state.sessions, state.second.id);
-  equal(host.requests.length, 1);
+  assertEquals(host.requests.length, 1);
 });
 
 test("two different sessions with the same id refuse a send instead of guessing", async () => {
@@ -312,24 +312,24 @@ test("two different sessions with the same id refuse a send instead of guessing"
 
   failed(await send(state.first, state.target, "Hello"), "more than one session has this id");
 
-  equal(host.requests.length, 0);
+  assertEquals(host.requests.length, 0);
 });
 
 test("the socket lives in a private folder that closing removes with the registry entry", async () => {
   const state = await opened();
 
   const entries = await readDir(`${state.dataDir}/peers`);
-  equal(entries.length, 1);
+  assertEquals(entries.length, 1);
 
   const folder = `/tmp/yuke-mailbox-${entries[0]?.name.replace(/\.json$/, "")}`;
-  equal((await lstat(`${folder}/socket`)).isFile, false);
+  assertEquals((await lstat(`${folder}/socket`)).isFile, false);
 
   await state.host.close();
 
-  equal(await readDir(`${state.dataDir}/peers`), []);
-  const error = await rejects(lstat(folder));
+  assertEquals(await readDir(`${state.dataDir}/peers`), []);
+  const error = await assertRejects(() => lstat(folder));
   assert(error instanceof FileSystemError);
-  equal(error.code, "ENOENT");
+  assertEquals(error.code, "ENOENT");
 });
 
 test("a message to a busy session waits for its running tool and reaches the next model round", async () => {
@@ -373,14 +373,14 @@ test("a message to a busy session waits for its running tool and reaches the nex
   const running = recipient.sendMessage("Start work.");
   try {
     await entered.promise;
-    equal((await send(sender, target, "Use the new API.")).isError, false);
-    equal(host.requests.length, 1);
+    assertEquals((await send(sender, target, "Use the new API.")).isError, false);
+    assertEquals(host.requests.length, 1);
   } finally {
     released.resolve();
     await running;
   }
 
-  equal(host.requests.length, 2);
+  assertEquals(host.requests.length, 2);
   const messages = host.requests[1]?.messages.map((message) => message.text).join("\n") ?? "";
   assert(messages.includes("the tool finished"), messages);
   assert(messages.includes('"message":"Use the new API."'), messages);
@@ -404,10 +404,10 @@ test("mailbox tools stay deferred beside subagent tools and discovery works thro
   const target = (await list(second)).self;
 
   await first.sendMessage("Find the other session.");
-  equal(host.requests.length, 3);
+  assertEquals(host.requests.length, 3);
 
   const initial = host.requests[0]?.tools ?? [];
-  equal(
+  assertEquals(
     initial.some((name) => name.startsWith("mailbox_")),
     false,
   );
@@ -418,7 +418,7 @@ test("mailbox tools stay deferred beside subagent tools and discovery works thro
   assert(search.includes("Input schema:"), search);
 
   const result = JSON.parse(host.requests[2]?.messages.at(-1)?.text ?? "") as Listing;
-  equal(
+  assertEquals(
     result.agents.map((agent) => agent.id),
     [target],
   );
@@ -431,21 +431,21 @@ test("the coordination hint preserves existing prompt sections and appears once 
   const built = await state.first.runHook("prompt.build", {
     sections: { base: "Keep the user's instructions.", project: "Work only on src/." },
   });
-  equal(Object.keys(built.sections), ["base", "project", "mailbox"]);
-  equal([built.sections.base, built.sections.project], ["Keep the user's instructions.", "Work only on src/."]);
+  assertEquals(Object.keys(built.sections), ["base", "project", "mailbox"]);
+  assertEquals([built.sections.base, built.sections.project], ["Keep the user's instructions.", "Work only on src/."]);
 
   await state.first.sendMessage("First turn.");
   await state.first.sendMessage("Second turn.");
 
   const count = (system: string, tag: string) => system.split(tag).length - 1;
-  equal(
+  assertEquals(
     host.requests.map((request) => [count(request.system, "<mailbox>"), count(request.system, "</mailbox>")]),
     [
       [1, 1],
       [1, 1],
     ],
   );
-  equal(
+  assertEquals(
     host.requests.map((request) => request.tools.filter((name) => name.startsWith("mailbox_"))),
     [[], []],
   );

@@ -1,6 +1,6 @@
 import { mkdir, writeTextFile } from "yuke:fs";
 import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
-import { assert, createFrame, createHost, equal, type FrameTest, type Reply, reply, test } from "yuke:test";
+import { assert, assertEquals, createFrame, createHost, type FrameTest, type Reply, reply, test } from "yuke:test";
 import { History } from "../src/history.ts";
 import { apply, session } from "../src/index.ts";
 
@@ -89,14 +89,14 @@ for (const width of [32, 100]) {
     assert(header !== undefined, "Saved answers use the same command/question heading without a timestamp.");
     const editor = loaded.tui.widgets.list().find((mount) => mount.widget === loaded.tui.focused)?.widget;
     assert(editor?.kind === "editor");
-    equal(editor.state.text, "");
+    assertEquals(editor.state.text, "");
     frame.key("ctrl+y");
-    equal(frame.copies, ["earlier answer"]);
+    assertEquals(frame.copies, ["earlier answer"]);
     frame.key("esc");
     loaded.tui.commands.run("btw:ask");
     await waitFor(() => screen(frame).includes("earlier answer"));
-    equal(host.requests.length, 0);
-    equal(loaded.main.transcript.entries.length, 0);
+    assertEquals(host.requests.length, 0);
+    assertEquals(loaded.main.transcript.entries.length, 0);
   });
 }
 
@@ -114,9 +114,9 @@ test("a tool-call response copies the same displayed answer before and after reo
 
   const expected = `The model returned no text. No tool was executed.\n\n${notice}`;
   const saved = (await loaded.history.list(loaded.main.id)).entries[0];
-  equal(saved?.answer, expected);
+  assertEquals(saved?.answer, expected);
   frame.key("ctrl+y");
-  equal(frame.copies, [expected]);
+  assertEquals(frame.copies, [expected]);
 
   frame.key("esc");
   loaded.tui.commands.run("btw:history");
@@ -124,8 +124,8 @@ test("a tool-call response copies the same displayed answer before and after reo
   frame.key("enter");
   await waitFor(() => screen(frame).includes(notice));
   frame.key("ctrl+y");
-  equal(frame.copies, [expected, expected]);
-  equal(host.requests.length, 2);
+  assertEquals(frame.copies, [expected, expected]);
+  assertEquals(host.requests.length, 2);
 });
 
 test("asking without a main round shows an info notice and sends no request", async () => {
@@ -137,10 +137,11 @@ test("asking without a main round shows an info notice and sends no request", as
   frame.paste("side question");
   frame.key("enter");
   await waitFor(() => host.notices.length > 0);
-  equal(host.notices.map(({ level, text: message }) => ({ level, message })), [
-    { level: "info", message: "Send a message in the main conversation before using /btw." },
-  ]);
-  equal(host.requests.length, 0);
+  assertEquals(
+    host.notices.map(({ level, text: message }) => ({ level, message })),
+    [{ level: "info", message: "Send a message in the main conversation before using /btw." }],
+  );
+  assertEquals(host.requests.length, 0);
 });
 
 test("history search finds answer text and can browse other sessions without a model call", async () => {
@@ -165,7 +166,7 @@ test("history search finds answer text and can browse other sessions without a m
       .includes("btw history"),
   );
   assert(pickerTitle !== undefined);
-  equal(pickerTitle.find((cell) => cell.text === "b")?.style.bg, undefined);
+  assertEquals(pickerTitle.find((cell) => cell.text === "b")?.style.bg, undefined);
   const selectedRow = frame.frame.cells.find((row) =>
     row
       .map((cell) => cell.text)
@@ -187,7 +188,7 @@ test("history search finds answer text and can browse other sessions without a m
     .split("\n")
     .find((line) => line.trim().startsWith("/btw "));
   assert(header !== undefined, "Saved answers use the same command/question heading without a timestamp.");
-  equal(host.requests.length, 0);
+  assertEquals(host.requests.length, 0);
 });
 
 test("a new question after browsing does not send saved questions or answers to the model", async () => {
@@ -205,11 +206,11 @@ test("a new question after browsing does not send saved questions or answers to 
   assert(sent.includes("an independent new question"));
   assert(!sent.includes("earlier question"));
   assert(!sent.includes("earlier answer"));
-  equal((await loaded.history.list(loaded.main.id)).entries.length, 2);
+  assertEquals((await loaded.history.list(loaded.main.id)).entries.length, 2);
   frame.key("esc");
   loaded.tui.commands.run("btw:ask");
   await waitFor(() => screen(frame).includes("new side answer"));
-  equal(host.requests.length, 2);
+  assertEquals(host.requests.length, 2);
 });
 
 test("history deletion requires explicit confirmation and respects the session scope", async () => {
@@ -222,10 +223,7 @@ test("history deletion requires explicit confirmation and respects the session s
   await waitFor(() => screen(frame).includes("earlier question"));
   frame.key("tab");
   frame.key("ctrl+x");
-  assert(
-    !screen(frame).includes("Type DELETE"),
-    "A scope that is still loading must not delete stale entries.",
-  );
+  assert(!screen(frame).includes("Type DELETE"), "A scope that is still loading must not delete stale entries.");
   await waitFor(() => screen(frame).includes("other question"));
   frame.key("tab");
   await waitFor(() => screen(frame).includes("earlier question"));
@@ -238,7 +236,7 @@ test("history deletion requires explicit confirmation and respects the session s
       .includes("Delete 1 saved"),
   );
   assert(confirmTitle !== undefined);
-  equal(confirmTitle.find((cell) => cell.text === "D")?.style.bg, undefined);
+  assertEquals(confirmTitle.find((cell) => cell.text === "D")?.style.bg, undefined);
   const confirmInput = frame.frame.cells.find((row) =>
     row
       .map((cell) => cell.text)
@@ -246,15 +244,15 @@ test("history deletion requires explicit confirmation and respects the session s
       .includes("Type DELETE"),
   );
   assert(confirmInput !== undefined);
-  equal(confirmInput.find((cell) => cell.text === "T")?.style.bg, undefined);
+  assertEquals(confirmInput.find((cell) => cell.text === "T")?.style.bg, undefined);
   frame.key("enter");
-  equal((await loaded.history.list()).entries.length, 2);
+  assertEquals((await loaded.history.list()).entries.length, 2);
   frame.key("esc");
   frame.key("ctrl+d");
   frame.paste("DELETE");
   frame.key("enter");
   await waitFor(() => screen(frame).includes("No saved answers"));
-  equal(
+  assertEquals(
     (await loaded.history.list()).entries.map((item) => item.question),
     ["other question"],
   );
@@ -264,8 +262,8 @@ test("history deletion requires explicit confirmation and respects the session s
   frame.paste("DELETE");
   frame.key("enter");
   await waitFor(() => screen(frame).includes("No saved answers"));
-  equal((await loaded.history.list()).entries, []);
-  equal(host.requests.length, 0);
+  assertEquals((await loaded.history.list()).entries, []);
+  assertEquals(host.requests.length, 0);
 });
 
 test("a narrow confirmation rejects lowercase input and Esc returns to history", async () => {
@@ -280,7 +278,7 @@ test("a narrow confirmation rejects lowercase input and Esc returns to history",
   frame.paste("delete");
   frame.key("enter");
   assert(screen(frame).includes("Delete 1 saved"));
-  equal((await loaded.history.list()).entries.length, 1);
+  assertEquals((await loaded.history.list()).entries.length, 1);
 
   frame.key("esc");
   assert(!screen(frame).includes("Type DELETE"));
@@ -301,7 +299,7 @@ test("storage failure preserves the answer and reports that it was not saved", a
   await waitFor(() => screen(frame).includes("do not lose this answer"));
   await waitFor(() => host.notices.some((notice) => notice.text.includes("was not saved")));
   frame.key("ctrl+y");
-  equal(frame.copies, ["do not lose this answer"]);
+  assertEquals(frame.copies, ["do not lose this answer"]);
 });
 
 test("flat presentation preserves Markdown highlights and copying the original answer", async () => {
@@ -324,12 +322,12 @@ test("flat presentation preserves Markdown highlights and copying the original a
   );
   assert(row !== undefined);
   const text = row.map((cell) => cell.text).join("");
-  equal(row[text.indexOf("bold")]?.style.bold, true);
-  equal(row[text.indexOf("inline")]?.style.fg, "#e3b341");
-  equal(row[text.indexOf("inline")]?.style.bg, undefined);
+  assertEquals(row[text.indexOf("bold")]?.style.bold, true);
+  assertEquals(row[text.indexOf("inline")]?.style.fg, "#e3b341");
+  assertEquals(row[text.indexOf("inline")]?.style.bg, undefined);
   frame.key("ctrl+y");
-  equal(frame.copies, [answer]);
-  equal(host.requests.length, 0);
+  assertEquals(frame.copies, [answer]);
+  assertEquals(host.requests.length, 0);
 });
 
 test("long multiline questions wrap without losing text or replacing the answer", async () => {
@@ -347,18 +345,18 @@ test("long multiline questions wrap without losing text or replacing the answer"
     const start = lines.findIndex((line) => line.includes("/btw"));
     const end = lines.findIndex((line, i) => i > start && line.trim() === "");
     assert(start >= 0 && end > start + 1, "The multiline question must remain visible across rows.");
-    equal(
+    assertEquals(
       lines.slice(start, end).join(" ").trim().replaceAll(/\s+/g, " "),
       `/btw ${question}`.replaceAll(/\s+/g, " "),
     );
     assert(lines.some((line) => line.includes(answer)));
     const continuation = frame.frame.cells[start + 1];
     assert(continuation !== undefined);
-    equal(continuation.find((cell) => cell.text.trim() !== "")?.style.dim, true);
+    assertEquals(continuation.find((cell) => cell.text.trim() !== "")?.style.dim, true);
   }
   frame.key("ctrl+y");
-  equal(frame.copies, [answer]);
-  equal(host.requests.length, 0);
+  assertEquals(frame.copies, [answer]);
+  assertEquals(host.requests.length, 0);
 });
 
 test("an arriving answer preserves output focus and the next independent draft", async () => {
@@ -380,13 +378,13 @@ test("an arriving answer preserves output focus and the next independent draft",
   assert(output !== undefined && output !== editor);
 
   await waitFor(() => screen(frame).includes("the new side answer"));
-  equal(loaded.tui.focused, output, "Request completion must not steal focus back from the answer.");
-  equal(editor.state.text, "the next independent draft");
+  assertEquals(loaded.tui.focused, output, "Request completion must not steal focus back from the answer.");
+  assertEquals(editor.state.text, "the next independent draft");
 
   frame.key("ctrl+y");
-  equal(frame.copies, ["the new side answer"]);
+  assertEquals(frame.copies, ["the new side answer"]);
   frame.key("tab");
-  equal(loaded.tui.focused, editor);
-  equal(editor.state.text, "the next independent draft");
-  equal(host.requests.length, 2);
+  assertEquals(loaded.tui.focused, editor);
+  assertEquals(editor.state.text, "the next independent draft");
+  assertEquals(host.requests.length, 2);
 });

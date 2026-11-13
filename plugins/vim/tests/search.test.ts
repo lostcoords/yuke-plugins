@@ -1,4 +1,4 @@
-import { assert, equal, test, waitForSettled } from "yuke:test";
+import { assert, assertEquals, test, waitForSettled } from "yuke:test";
 import { TextEditor } from "yuke:tui";
 import { composer, harness } from "./support.ts";
 
@@ -7,17 +7,17 @@ test("literal search finds the next match and repeat search wraps in both direct
   using frame = fixture.frame;
   frame.key("esc alt+/");
   assert(fixture.surface.tui.focused instanceof TextEditor);
-  equal(fixture.surface.tui.focused.role, "field");
+  assertEquals(fixture.surface.tui.focused.role, "field");
   frame.key("o n e enter");
   // The prompt closes after its answer, and the focus comes back at the next draw.
   await waitForSettled();
   frame.draw();
-  equal([fixture.editor.state.text, fixture.editor.caret], ["one two one", 8]);
-  equal(fixture.surface.tui.focused, fixture.editor);
+  assertEquals([fixture.editor.state.text, fixture.editor.caret], ["one two one", 8]);
+  assertEquals(fixture.surface.tui.focused, fixture.editor);
   frame.key("n");
-  equal(fixture.editor.caret, 0);
+  assertEquals(fixture.editor.caret, 0);
   frame.key("N");
-  equal(fixture.editor.caret, 8);
+  assertEquals(fixture.editor.caret, 8);
 });
 
 test("backward search keeps its direction for subsequent repeats", async () => {
@@ -27,11 +27,11 @@ test("backward search keeps its direction for subsequent repeats", async () => {
   // The prompt closes after its answer, and the focus comes back at the next draw.
   await waitForSettled();
   frame.draw();
-  equal(fixture.editor.caret, 8);
+  assertEquals(fixture.editor.caret, 8);
   frame.key("n");
-  equal(fixture.editor.caret, 0);
+  assertEquals(fixture.editor.caret, 0);
   frame.key("N");
-  equal(fixture.editor.caret, 8);
+  assertEquals(fixture.editor.caret, 8);
 });
 
 test("an operator can use a literal search as its motion and undo restores the draft", async () => {
@@ -41,19 +41,19 @@ test("an operator can use a literal search as its motion and undo restores the d
   // The prompt closes after its answer, and the focus comes back at the next draw.
   await waitForSettled();
   frame.draw();
-  equal([fixture.editor.state.text, fixture.editor.caret], ["three", 0]);
+  assertEquals([fixture.editor.state.text, fixture.editor.caret], ["three", 0]);
   frame.key("u");
-  equal([fixture.editor.state.text, fixture.editor.caret], ["one two three", 0]);
+  assertEquals([fixture.editor.state.text, fixture.editor.caret], ["one two three", 0]);
 });
 
 test("cancel of a search leaves the draft and caret unchanged", () => {
   const fixture = composer("one two one");
   using frame = fixture.frame;
   frame.key("esc w alt+/ o n e esc");
-  equal([fixture.editor.state.text, fixture.editor.caret], ["one two one", 4]);
-  equal(fixture.surface.tui.focused, fixture.editor);
+  assertEquals([fixture.editor.state.text, fixture.editor.caret], ["one two one", 4]);
+  assertEquals(fixture.surface.tui.focused, fixture.editor);
   frame.key("x");
-  equal([fixture.editor.state.text, fixture.editor.caret], ["one wo one", 4]);
+  assertEquals([fixture.editor.state.text, fixture.editor.caret], ["one wo one", 4]);
 });
 
 test("a search answer does not apply to a replacement draft", async () => {
@@ -65,9 +65,9 @@ test("a search answer does not apply to a replacement draft", async () => {
   // The prompt closes after its answer, and the focus comes back at the next draw.
   await waitForSettled();
   frame.draw();
-  equal([fixture.editor.state.text, fixture.editor.caret], ["new draft", 0]);
+  assertEquals([fixture.editor.state.text, fixture.editor.caret], ["new draft", 0]);
   frame.key("x");
-  equal(fixture.editor.state.text, "ew draft");
+  assertEquals(fixture.editor.state.text, "ew draft");
 });
 
 test("focus changes cancel a pending operator without changing another composer", () => {
@@ -84,10 +84,10 @@ test("focus changes cancel a pending operator without changing another composer"
   frame.key("esc d");
   fixture.surface.tui.focus(second);
   frame.key("X");
-  equal([first.state.text, second.state.text], ["first", "Xsecond"]);
+  assertEquals([first.state.text, second.state.text], ["first", "Xsecond"]);
   fixture.surface.tui.focus(first);
   frame.key("w");
-  equal([first.state.text, first.caret], ["first", 4]);
+  assertEquals([first.state.text, first.caret], ["first", 4]);
 });
 
 test("a search dialog closes when its composer leaves the tree", () => {
@@ -97,7 +97,7 @@ test("a search dialog closes when its composer leaves the tree", () => {
   const replacement = new TextEditor({ role: "field" });
   fixture.surface.tui.wrapRoot(() => replacement);
   frame.draw();
-  equal(fixture.surface.tui.focused, replacement);
+  assertEquals(fixture.surface.tui.focused, replacement);
   frame.key("X");
-  equal([replacement.state.text, fixture.editor.state.text], ["X", "old draft"]);
+  assertEquals([replacement.state.text, fixture.editor.state.text], ["X", "old draft"]);
 });

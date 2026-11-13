@@ -3,7 +3,7 @@
 import { mkdir, readTextFile, writeTextFile } from "yuke:fs";
 import type { PluginApply, PluginSession, SessionContext, Sessions } from "yuke:plugins";
 import type { QuestionAnswer } from "yuke:protocol";
-import { createHost, equal, type Reply, reply, waitForSettled, test } from "yuke:test";
+import { assertEquals, createHost, type Reply, reply, test, waitForSettled } from "yuke:test";
 import { apply, session } from "../src/index.ts";
 import type { LoggedRun } from "../src/run-log.ts";
 
@@ -105,7 +105,7 @@ const newest = (host: Opened["host"]) => host.requests.at(-1)?.messages.at(-1)?.
 /** The id of the only subagent of the session `parent`. */
 async function childOf(opened: Opened): Promise<string> {
   const rows = (await opened.list.list({ parent: opened.parent.id })).sessions;
-  equal(rows.length, 1);
+  assertEquals(rows.length, 1);
   return rows[0]?.session.sessionId as string;
 }
 
@@ -123,13 +123,13 @@ test("a background subagent reports to the parent and stays out of the session l
   const id = await childOf(state);
   const roots = (await list.list()).sessions.map((row) => row.session.sessionId);
 
-  equal(started.display, [{ kind: "markdown", text: "Running in the background" }]);
-  equal(
+  assertEquals(started.display, [{ kind: "markdown", text: "Running in the background" }]);
+  assertEquals(
     started.text,
     `Subagent ${id} runs in the background. Its final message arrives as a notification, so do not sleep, poll, or guess the result.\nDo not do its task, and avoid its files and topics. Work on something else, or tell the user what you started and end your turn. If the user asks before the notification arrives, say that the subagent still runs.`,
   );
-  equal(newest(host), notification(id, "Two tables."));
-  equal(roots, [parent.id]);
+  assertEquals(newest(host), notification(id, "Two tables."));
+  assertEquals(roots, [parent.id]);
 });
 
 test("a follow-up by id reaches the same subagent, with its context", async () => {
@@ -149,10 +149,10 @@ test("a follow-up by id reaches the same subagent, with its context", async () =
   await waitForSettled();
 
   const child = host.requests.at(2)?.messages.map((message) => message.text);
-  equal(child?.slice(0, 2), ["Read the store.", "Two tables."]);
-  equal(child?.at(-1), "And the indexes?");
-  equal(newest(host), notification(id, "Three indexes.", "completed", "And the indexes?"));
-  equal(await childOf(state), id);
+  assertEquals(child?.slice(0, 2), ["Read the store.", "Two tables."]);
+  assertEquals(child?.at(-1), "And the indexes?");
+  assertEquals(newest(host), notification(id, "Three indexes.", "completed", "And the indexes?"));
+  assertEquals(await childOf(state), id);
 });
 
 test("a foreground subagent gives the model its id and report, shows the user the report, and sends no notification", async () => {
@@ -163,12 +163,12 @@ test("a foreground subagent gives the model its id and report, shows the user th
   const result = await parent.call("spawn_subagent", { ...SPAWN, background: false });
   const id = await childOf(state);
 
-  equal(
+  assertEquals(
     [result.text, result.isError, result.display],
     [`Subagent ${id}:\n\nTwo tables.`, false, [{ kind: "markdown", text: "Two tables." }]],
   );
-  equal(handle.jobs(), []);
-  equal(host.requests.length, 1);
+  assertEquals(handle.jobs(), []);
+  assertEquals(host.requests.length, 1);
 });
 
 test("a move of a foreground subagent answers the call, and the report reaches the parent", async () => {
@@ -185,10 +185,10 @@ test("a move of a foreground subagent answers the call, and the report reaches t
   openGate();
   await waitForSettled();
 
-  equal(moved.display, [{ kind: "markdown", text: "Moved to the background" }]);
-  equal(moved.text.startsWith(`Subagent ${id} runs in the background. Its final message`), true);
-  equal(jobs, [[id, "Read the store"]]);
-  equal(newest(host), notification(id, "Two tables."));
+  assertEquals(moved.display, [{ kind: "markdown", text: "Moved to the background" }]);
+  assertEquals(moved.text.startsWith(`Subagent ${id} runs in the background. Its final message`), true);
+  assertEquals(jobs, [[id, "Read the store"]]);
+  assertEquals(newest(host), notification(id, "Two tables."));
 });
 
 test("a message during the run joins the turn of the subagent, and the report comes after its answer", async () => {
@@ -203,9 +203,9 @@ test("a message during the run joins the turn of the subagent, and the report co
   openGate();
   await waitForSettled();
 
-  equal(sent.display, [{ kind: "markdown", text: "Message sent" }]);
-  equal(newest(host), notification(id, "Three indexes."));
-  equal(host.requests[1]?.messages.at(-1)?.text, "open\nAnd the indexes?");
+  assertEquals(sent.display, [{ kind: "markdown", text: "Message sent" }]);
+  assertEquals(newest(host), notification(id, "Three indexes."));
+  assertEquals(host.requests[1]?.messages.at(-1)?.text, "open\nAnd the indexes?");
 });
 
 test("a stop by id ends the subagent and sends no report", async () => {
@@ -219,9 +219,9 @@ test("a stop by id ends the subagent and sends no report", async () => {
   const stopped = await parent.call("stop", { id });
   await waitForSettled();
 
-  equal(stopped.text, `${id} stopped.`);
-  equal(handle.jobs(), []);
-  equal(host.requests.length, 1);
+  assertEquals(stopped.text, `${id} stopped.`);
+  assertEquals(handle.jobs(), []);
+  assertEquals(host.requests.length, 1);
 });
 
 test("a stop while the job starts ends the subagent, and the stop does not hang", async () => {
@@ -237,7 +237,7 @@ test("a stop while the job starts ends the subagent, and the stop does not hang"
   await waitForSettled();
   started.resolve();
 
-  equal((await stopping).text, `${id} stopped.`);
+  assertEquals((await stopping).text, `${id} stopped.`);
 });
 
 test("a stop closes the question of the subagent, and a late answer raises no fault", async () => {
@@ -259,7 +259,7 @@ test("a stop closes the question of the subagent, and a late answer raises no fa
   late.resolve([{ id: "go", values: ["Yes"] }]);
   await waitForSettled();
 
-  equal([stopped.isError, signal?.aborted], [false, true]);
+  assertEquals([stopped.isError, signal?.aborted], [false, true]);
 });
 
 test("a hook of the subagent that fails reports that the subagent did not start, and no older answer", async () => {
@@ -270,7 +270,10 @@ test("a hook of the subagent that fails reports that the subagent did not start,
   await parent.call("spawn_subagent", SPAWN);
   await waitForSettled();
 
-  equal(newest(host), notification(await childOf(state), "The subagent did not start. A notice tells why.", "failed"));
+  assertEquals(
+    newest(host),
+    notification(await childOf(state), "The subagent did not start. A notice tells why.", "failed"),
+  );
 });
 
 test("the close of the parent stops a subagent that runs", async () => {
@@ -284,8 +287,8 @@ test("the close of the parent stops a subagent that runs", async () => {
   await list.closeForAll(parent.id);
   await waitForSettled();
 
-  equal((await list.get(id)).state, "idle");
-  equal(host.requests.length, 1);
+  assertEquals((await list.get(id)).state, "idle");
+  assertEquals(host.requests.length, 1);
 });
 
 test("a turn without a final message reports that, and not the message of an older turn", async () => {
@@ -299,7 +302,10 @@ test("a turn without a final message reports that, and not the message of an old
   await parent.call("message_subagent", { id, message: "And the indexes?", background: true });
   await waitForSettled();
 
-  equal(newest(host), notification(id, "The subagent ended without a final message.", "completed", "And the indexes?"));
+  assertEquals(
+    newest(host),
+    notification(id, "The subagent ended without a final message.", "completed", "And the indexes?"),
+  );
 });
 
 test("a cancelled turn reports cancelled, not completed", async () => {
@@ -316,7 +322,7 @@ test("a cancelled turn reports cancelled, not completed", async () => {
   await waitForSettled();
   closed.abort();
 
-  equal(newest(host), notification(id, "A cancel ended the subagent before it finished.", "cancelled"));
+  assertEquals(newest(host), notification(id, "A cancel ended the subagent before it finished.", "cancelled"));
 });
 
 test("a stop drops a message that waits, so no new turn starts", async () => {
@@ -331,7 +337,7 @@ test("a stop drops a message that waits, so no new turn starts", async () => {
   await parent.call("stop", { id });
   await waitForSettled();
 
-  equal(host.requests.length, 1);
+  assertEquals(host.requests.length, 1);
 });
 
 test("a question of the subagent reaches the parent, and its answer returns", async () => {
@@ -344,11 +350,11 @@ test("a question of the subagent reaches the parent, and its answer returns", as
   await parent.call("spawn_subagent", SPAWN);
   await waitForSettled();
 
-  equal(
+  assertEquals(
     host.questions.map((question) => question.sessionId),
     [parent.id],
   );
-  equal(newest(host), notification(await childOf(state), "It said yes."));
+  assertEquals(newest(host), notification(await childOf(state), "It said yes."));
 });
 
 test("a failed turn reports the failure, and a foreground call is an error", async () => {
@@ -361,9 +367,9 @@ test("a failed turn reports the failure, and a foreground call is an error", asy
   await parent.call("message_subagent", { id, message: "Try again.", background: true });
   await waitForSettled();
 
-  equal(result.isError, true);
-  equal(result.text.startsWith(`Subagent ${id}:`) && result.text.includes("overloaded"), true);
-  equal(newest(host)?.includes(`${id} Try again.: failed.`), true);
+  assertEquals(result.isError, true);
+  assertEquals(result.text.startsWith(`Subagent ${id}:`) && result.text.includes("overloaded"), true);
+  assertEquals(newest(host)?.includes(`${id} Try again.: failed.`), true);
 });
 
 test("an id that names no subagent of this session is an error, also the id of the parent", async () => {
@@ -373,9 +379,9 @@ test("an id that names no subagent of this session is an error, also the id of t
   const unknown = await parent.call("message_subagent", { id: "nope", message: "Hi.", background: true });
   const own = await parent.call("message_subagent", { id: parent.id, message: "Hi.", background: true });
 
-  equal(unknown.text, "The id nope names no subagent of this session.");
-  equal(own.text, `The id ${parent.id} names no subagent of this session.`);
-  equal([unknown.isError, own.isError], [true, true]);
+  assertEquals(unknown.text, "The id nope names no subagent of this session.");
+  assertEquals(own.text, `The id ${parent.id} names no subagent of this session.`);
+  assertEquals([unknown.isError, own.isError], [true, true]);
 });
 
 test("two parallel spawns create two subagents", async () => {
@@ -399,7 +405,7 @@ test("two parallel spawns create two subagents", async () => {
   await sent;
   await waitForSettled();
 
-  equal((await list.list({ parent: parent.id })).sessions.length, 2);
+  assertEquals((await list.list({ parent: parent.id })).sessions.length, 2);
 });
 
 test("parallel runs share one view of the parent, and a later run opens another", async () => {
@@ -426,11 +432,11 @@ test("parallel runs share one view of the parent, and a later run opens another"
   openGate();
   await sent;
   await waitForSettled();
-  equal(viewsOfParent(), 1);
+  assertEquals(viewsOfParent(), 1);
 
   await parent.sendMessage("Read it again.");
   await waitForSettled();
-  equal(viewsOfParent(), 2);
+  assertEquals(viewsOfParent(), 2);
 });
 
 test("the view of the parent stays until its last subagent ends", async () => {
@@ -449,12 +455,12 @@ test("the view of the parent stays until its last subagent ends", async () => {
   const sent = parent.sendMessage("Read the store.");
   await waitForSettled();
   const view = opens.find((open) => open.id === parent.id)?.signal;
-  equal(handle.jobs().length, 1);
-  equal(view?.aborted, false);
+  assertEquals(handle.jobs().length, 1);
+  assertEquals(view?.aborted, false);
 
   await handle.stopJob(handle.jobs()[0]?.id as string);
   await waitForSettled();
-  equal(view?.aborted, true);
+  assertEquals(view?.aborted, true);
   openGate();
   await sent;
 });
@@ -489,8 +495,8 @@ test("a subagent that ends or stops leaves the log, and a close of the parent ke
   await list.closeForAll(parent.id);
   await waitForSettled();
 
-  equal([running, stopped, ended], [[first], [], []]);
-  equal(await logged(dataDir(), parent.id), [first]);
+  assertEquals([running, stopped, ended], [[first], [], []]);
+  assertEquals(await logged(dataDir(), parent.id), [first]);
 });
 
 test("a run from an earlier process gives a notice now, and the model reads it once with the next input", async () => {
@@ -508,10 +514,10 @@ test("a run from an earlier process gives a notice now, and the model reads it o
   await parent.sendMessage("And now?");
   await waitForSettled();
 
-  equal(notices, ["Read the store · interrupted"]);
-  equal(told.includes("Subagent lost-1 (Read the store) stopped when yuke closed"), true);
-  equal(told.includes("What happened?"), true);
-  equal(host.requests[1]?.messages.at(-1)?.text, "And now?");
+  assertEquals(notices, ["Read the store · interrupted"]);
+  assertEquals(told.includes("Subagent lost-1 (Read the store) stopped when yuke closed"), true);
+  assertEquals(told.includes("What happened?"), true);
+  assertEquals(host.requests[1]?.messages.at(-1)?.text, "And now?");
 });
 
 test("a damaged log gives one notice, and the file goes", async () => {
@@ -521,9 +527,9 @@ test("a damaged log gives one notice, and the file goes", async () => {
   await using _host = host;
   await waitForSettled();
 
-  equal(notices.length, 1);
-  equal(notices[0]?.includes("not a list"), true);
-  equal(await logged(dataDir(), parent.id), []);
+  assertEquals(notices.length, 1);
+  assertEquals(notices[0]?.includes("not a list"), true);
+  assertEquals(await logged(dataDir(), parent.id), []);
 });
 
 test("a subagent gets the prompt section and no subagent tools, and the parent gets the tools and no section", async () => {
@@ -534,10 +540,10 @@ test("a subagent gets the prompt section and no subagent tools, and the parent g
   await waitForSettled();
 
   const [child, turn] = host.requests;
-  equal(child?.system?.includes("You are a subagent working on one task"), true);
-  equal(turn?.system?.includes("You are a subagent working on one task"), false);
-  equal(child?.tools.includes("spawn_subagent"), false);
-  equal(child?.tools.includes("message_subagent"), false);
-  equal(turn?.tools.includes("spawn_subagent"), true);
-  equal(turn?.tools.includes("message_subagent"), true);
+  assertEquals(child?.system?.includes("You are a subagent working on one task"), true);
+  assertEquals(turn?.system?.includes("You are a subagent working on one task"), false);
+  assertEquals(child?.tools.includes("spawn_subagent"), false);
+  assertEquals(child?.tools.includes("message_subagent"), false);
+  assertEquals(turn?.tools.includes("spawn_subagent"), true);
+  assertEquals(turn?.tools.includes("message_subagent"), true);
 });

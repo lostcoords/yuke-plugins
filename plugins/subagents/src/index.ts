@@ -300,7 +300,7 @@ function holdParent(s: SessionContext): ParentView {
       tail: 0,
       signal: ended.signal,
       onEvent(event) {
-        const updates = "snapshot" in event ? event.snapshot.updates : [event.update];
+        const updates = event.kind === "snapshot" ? event.snapshot.updates : [event.update];
         for (const update of updates) {
           if (update.sessionUpdate !== "state") continue;
           if (update.state === "idle") busy.delete(s.sessionId);
@@ -342,7 +342,7 @@ async function work(
       tail: 0,
       signal: ended.signal,
       onEvent(event) {
-        if ("snapshot" in event || event.update.sessionUpdate !== "interactionRequested") return;
+        if (event.kind === "snapshot" || event.update.sessionUpdate !== "interactionRequested") return;
         const update = event.update;
         // A subagent has no user, so the parent asks its user.
         void s.ask({ questions: update.request.questions }, { signal: ended.signal }).then((answers) => {

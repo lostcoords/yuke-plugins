@@ -148,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix="yuke-vim-parity-") as directory:
         expectations.append([item["text"], len(prefix.encode("utf-16-le")) // 2])
     if len(expectations) != len(cases):
         raise RuntimeError("Vim did not return one result per case")
-    source = '''import { equal, test } from "yuke:test";
+    source = '''import { assertEquals, test } from "yuke:test";
 import { composer } from SUPPORT;
 const cases: readonly [string, number, string][] = CASES;
 const expected: readonly [string, number][] = EXPECTATIONS;
@@ -160,7 +160,7 @@ for (const [index, entry] of cases.entries()) {
    frame.key("esc");
    fixture.editor.caret = entry[1];
    for (const character of entry[2]) frame.key(controls[character] ?? character);
-   equal([fixture.editor.state.text, fixture.editor.caret], expected[index]);
+   assertEquals([fixture.editor.state.text, fixture.editor.caret], expected[index]);
  });
 }
 '''

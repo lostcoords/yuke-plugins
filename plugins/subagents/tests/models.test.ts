@@ -3,7 +3,7 @@
 import { readTextFile, writeTextFile } from "yuke:fs";
 import type { Catalog, PluginApply, PluginContext, PluginSession, ServiceOf, Services, Sessions } from "yuke:plugins";
 import type { SessionSettings } from "yuke:protocol";
-import { createFrame, createHost, equal, folder, reply, waitForSettled, test } from "yuke:test";
+import { assertEquals, createFrame, createHost, folder, reply, test, waitForSettled } from "yuke:test";
 import { apply, session } from "../src/index.ts";
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, type SavedModels } from "../src/models.ts";
@@ -91,15 +91,15 @@ test("an empty list gives no model argument, and a subagent uses the session mod
 
   await state.parent.call("spawn_subagent", SPAWN);
 
-  equal(argument(state), undefined);
-  equal(state.created, [state.session()]);
+  assertEquals(argument(state), undefined);
+  assertEquals(state.created, [state.session()]);
 });
 
 test("the model argument lists the saved models of ready providers", async () => {
   const state = await opened(file({ models: [OPUS_ENTRY, GONE_ENTRY] }));
   await using _host = state.host;
 
-  equal(argument(state)?.enum, ["anthropic/claude-opus:high"]);
+  assertEquals(argument(state)?.enum, ["anthropic/claude-opus:high"]);
 });
 
 test("a chosen model sets the model and the reasoning, and it keeps the other settings", async () => {
@@ -109,7 +109,7 @@ test("a chosen model sets the model and the reasoning, and it keeps the other se
   await state.parent.call("spawn_subagent", { ...SPAWN, model: "anthropic/claude-opus:high" });
 
   const parent = state.session();
-  equal(state.created, [
+  assertEquals(state.created, [
     {
       model: { provider: "anthropic", model: "claude-opus" },
       settings: { ...parent.settings, reasoning: OPUS },
@@ -131,7 +131,7 @@ test("the default of the user applies with no model argument, and the argument w
   await state.parent.call("spawn_subagent", SPAWN);
   await state.parent.call("spawn_subagent", { ...SPAWN, model: "anthropic/claude-opus:high" });
 
-  equal(
+  assertEquals(
     state.created.map((settings) => settings.model.model),
     ["claude-sonnet", "claude-opus"],
   );
@@ -143,12 +143,12 @@ test("a default that is gone is an error at the spawn, and no subagent starts", 
 
   const result = await state.parent.call("spawn_subagent", SPAWN);
 
-  equal(result.isError, true);
-  equal(
+  assertEquals(result.isError, true);
+  assertEquals(
     result.text,
     "The subagent model gone/model:high is not available. Ask the user to change the list with subagents:models.",
   );
-  equal(state.created, []);
+  assertEquals(state.created, []);
 });
 
 test("a file that is not JSON names the file in the notice", async () => {
@@ -157,7 +157,7 @@ test("a file that is not JSON names the file in the notice", async () => {
 
   await waitForSettled();
 
-  equal(
+  assertEquals(
     state.notices.some((text) => text.includes("settings.json is not JSON")),
     true,
   );
@@ -170,12 +170,12 @@ test("a broken file gives a notice and no model argument, and a spawn names the 
   const result = await state.parent.call("spawn_subagent", SPAWN);
   await waitForSettled();
 
-  equal(argument(state), undefined);
-  equal(
+  assertEquals(argument(state), undefined);
+  assertEquals(
     state.notices.some((text) => text.includes("settings.json needs")),
     true,
   );
-  equal([result.isError, result.text.includes("settings.json needs")], [true, true]);
+  assertEquals([result.isError, result.text.includes("settings.json needs")], [true, true]);
 });
 
 /** A frame with the dialog on a saved file in a new folder. */
@@ -186,8 +186,7 @@ async function dialog(saved?: SavedModels) {
   const failures: string[] = [];
   await openModelDialog(frame.surface("subagents").tui, new ModelList(dataDir, CATALOG), (text) => failures.push(text));
   frame.draw();
-  const stored = async (): Promise<SavedModels> =>
-    JSON.parse(await readTextFile("settings.json", { cwd: dataDir }));
+  const stored = async (): Promise<SavedModels> => JSON.parse(await readTextFile("settings.json", { cwd: dataDir }));
   return { frame, stored, failures };
 }
 
@@ -198,7 +197,7 @@ test("the dialog shows the session model as the default, and a saved model that 
     .map((row) => row.trimEnd().replace(/\s{2,}/g, "  "))
     .filter((row) => row.trim() !== "");
 
-  equal(shown.slice(-5), [
+  assertEquals(shown.slice(-5), [
     " Subagent models",
     " > Session model  default",
     "  anthropic/claude-opus:high",
@@ -219,8 +218,8 @@ test("a add picks a model and a level, and the list saves it", async () => {
   await waitForSettled();
 
   state.frame.draw();
-  equal((await state.stored()).models, [OPUS_ENTRY]);
-  equal(rowsOf(state.frame.frame).join("\n").includes("The model list changes in new sessions."), true);
+  assertEquals((await state.stored()).models, [OPUS_ENTRY]);
+  assertEquals(rowsOf(state.frame.frame).join("\n").includes("The model list changes in new sessions."), true);
 });
 
 test("enter sets the default, the session row clears it, and d removes a model and its default", async () => {
@@ -242,8 +241,8 @@ test("enter sets the default, the session row clears it, and d removes a model a
   await waitForSettled();
   const after = await state.stored();
 
-  equal([set, cleared], ["anthropic/claude-opus:high", undefined]);
-  equal(after, { models: [] });
+  assertEquals([set, cleared], ["anthropic/claude-opus:high", undefined]);
+  assertEquals(after, { models: [] });
 });
 
 test("a add of a model that the list holds keeps one row", async () => {
@@ -257,7 +256,7 @@ test("a add of a model that the list holds keeps one row", async () => {
   state.frame.key("enter");
   await waitForSettled();
 
-  equal((await state.stored()).models, [OPUS_ENTRY]);
+  assertEquals((await state.stored()).models, [OPUS_ENTRY]);
 });
 
 test("two quick keys build on each other, and the file holds both", async () => {
@@ -271,7 +270,7 @@ test("two quick keys build on each other, and the file holds both", async () => 
   state.frame.key("d");
   await waitForSettled();
 
-  equal(await state.stored(), { default: "anthropic/claude-opus:high", models: [OPUS_ENTRY] });
+  assertEquals(await state.stored(), { default: "anthropic/claude-opus:high", models: [OPUS_ENTRY] });
 });
 
 test("d does nothing on the session row", async () => {
@@ -281,5 +280,5 @@ test("d does nothing on the session row", async () => {
   state.frame.key("d");
   await waitForSettled();
 
-  equal((await state.stored()).models, [OPUS_ENTRY]);
+  assertEquals((await state.stored()).models, [OPUS_ENTRY]);
 });
