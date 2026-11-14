@@ -28,10 +28,12 @@ with tempfile.TemporaryDirectory(prefix="yuke-vim-terminal-") as directory:
     config.mkdir(parents=True)
     (root / "work").mkdir()
     ready = root / "mounted.txt"
+    navigation = root / "navigation.json"
     probe = root / "probe"
     probe.mkdir()
     (probe / "plugin.json").write_text(json.dumps({"name": "vim-probe", "extensions": {"sh.yuke": {"entry": "index.ts"}}}))
     (probe / "index.ts").write_text('''import { writeTextFile } from "yuke:fs";
+import { TextEditor, TextView } from "yuke:tui";
 export function apply(ctx) {
   const tui = ctx.get("tui");
   if (tui === undefined) return;
@@ -41,8 +43,23 @@ export function apply(ctx) {
     recorded = true;
     void writeTextFile(READY, "mounted\\n", { append: true }).catch((error) => ctx.notify("error", String(error)));
   });
+  tui.commands.add({ name: "transcript", slash: "vim-transcript", run: () => {
+    const group = {};
+    const editor = new TextEditor({ role: "composer", group });
+    const view = new TextView({ role: "transcript", group, document: {
+      id: "terminal-fixture", items: [{ id: "reply", sections: [{ id: "body", kind: "text", text: "alpha beta gamma" }] }],
+    } });
+    editor.extend(ctx.signal).addChangeListener(() => {
+      void writeTextFile(NAVIGATION, JSON.stringify({ text: editor.state.text, focused: tui.focused === editor }))
+        .catch((error) => ctx.notify("error", String(error)));
+    });
+    tui.panes.split(() => ({ initialFocus: editor, draw() {}, layout: (size) => [
+      { view, rect: { column: 0, row: 0, width: size.width, height: size.height - 2 } },
+      { view: editor, rect: { column: 0, row: size.height - 2, width: size.width, height: 2 } },
+    ] }));
+  } });
 }
-'''.replace("READY", json.dumps(str(ready))))
+'''.replace("READY", json.dumps(str(ready))).replace("NAVIGATION", json.dumps(str(navigation))))
     (config / "config.json").write_text(json.dumps({"plugins": [str(package), str(probe)]}))
     environment = dict(
         os.environ, HOME=str(root), YUKE_APPNAME="yuke", XDG_CONFIG_HOME=str(root / "config"),
@@ -132,7 +149,22 @@ export function apply(ctx) {
         wait_for(contains("NORMAL"))
         os.write(terminal, b"0dw")
         wait_for(lambda rows: any(row.strip() == "reload" for row in rows))
-        print("PASS real terminal: manifest load, Insert/Normal modes, delete, undo, text object, and profile reload")
+        os.write(terminal, b"\x03")
+        wait_for(contains("Message"))
+        os.write(terminal, b"/vim-transcript\r")
+        wait_for(contains("alpha beta gamma"))
+        os.write(terminal, b"\x1b")
+        wait_for(contains("NORMAL"))
+        os.write(terminal, b"\tgg02yw\tp")
+        def copied_to_composer(_rows):
+            if not navigation.exists():
+                return False
+            try:
+                return json.loads(navigation.read_text()) == {"text": "alpha beta ", "focused": True}
+            except json.JSONDecodeError:
+                return False
+        wait_for(copied_to_composer)
+        print("PASS real terminal: editing, undo, text object, reload, transcript focus, and shared registers")
     finally:
         Path(os.environ.get("YUKE_VIM_TERMINAL_LOG", "/tmp/yuke-vim-terminal.log")).write_bytes(transcript)
         os.kill(process, signal.SIGTERM)

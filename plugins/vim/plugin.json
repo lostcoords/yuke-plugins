@@ -1,10 +1,13 @@
 {
   "name": "vim",
   "version": "0.1.0",
-  "description": "Vim editing through public Yuke text widget APIs.",
+  "description": "Vim editing and transcript navigation through public Yuke text widget APIs.",
   "extensions": {
     "sh.yuke": {
-      "entry": "src/index.ts"
+      "entry": "src/index.ts",
+      "provides": [
+        "composer-vim"
+      ]
     }
   }
 }
