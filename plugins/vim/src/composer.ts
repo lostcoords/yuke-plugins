@@ -9,9 +9,9 @@ import {
   type Tui,
 } from "yuke:tui";
 import type { Registers } from "./registers.ts";
+import type { ComposerVim, Mode } from "./service.ts";
 import { afterLine, firstNonblank, lineEnd, lineStart, type Range as MotionRange, Navigation } from "./text.ts";
 
-type Mode = "insert" | "normal" | "visual" | "visual-line";
 interface Snapshot {
   text: string;
   caret: number;
@@ -93,7 +93,8 @@ class ComposerState {
   }
 }
 
-export class ComposerEditor {
+export class ComposerEditor implements ComposerVim {
+  readonly listeners = new Set<(editor: TextEditor, mode: Mode) => void>();
   readonly states = new Map<TextEditor, ComposerState>();
   readonly ctx: PluginContext;
   readonly tui: Tui;
@@ -198,6 +199,10 @@ export class ComposerEditor {
         },
       ]);
     } else if (modeChanged) state.extension.setDecorations([]);
+    if (modeChanged)
+      this.listeners.forEach((listener) => {
+        listener(editor, state.mode);
+      });
     this.updateStatus();
   }
 
@@ -299,6 +304,28 @@ export class ComposerEditor {
     return editor ? this.states.get(editor)?.mode || "insert" : "";
   }
 
+  setMode(editor: TextEditor, mode: "insert" | "normal"): void {
+    const state = this.states.get(editor);
+    if (state === undefined) return;
+    this.cancel(editor);
+    if (state.mode === mode) return;
+    state.mode = mode;
+    if (mode === "normal") editor.caret = state.navigation.clamp(editor.state.text, editor.caret);
+    this.refresh(editor, state);
+  }
+
+  pending(editor: TextEditor): boolean {
+    const state = this.states.get(editor);
+    return state !== undefined && (state.phase !== "ready" || state.count !== 0 || state.leading !== 0);
+  }
+
+  onMode(listener: (editor: TextEditor, mode: Mode) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
   reset(state: ComposerState) {
     state.phase = "ready";
     state.prefix = "";
@@ -311,12 +338,14 @@ export class ComposerEditor {
   cancel(editor: TextEditor) {
     const state = this.states.get(editor);
     if (!state) return;
-    if (state.mode.startsWith("visual")) {
+    const visual = state.mode.startsWith("visual");
+    if (visual) {
       this.rememberVisual(editor, state);
       state.mode = "normal";
     }
     if (state.mode === "insert") this.finish(editor, state);
     this.reset(state);
+    if (visual) this.refresh(editor, state);
   }
 
   snapshot(editor: TextEditor, state: ComposerState, source: EditorState = editor.state): Snapshot {
