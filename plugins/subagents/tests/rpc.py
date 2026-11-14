@@ -21,9 +21,9 @@ WAIT = 15
 SPAWN = {'description': 'Read the store', 'message': 'Read the store.', 'background': True}
 # A child tool that asks the user, as a tool of another plugin does.
 ASKER = """export function session(s) {
-  s.tools.define({
+  s.tools.add({
     name: 'ask_user', description: 'Ask.', concurrency: 'serial',
-    parameters: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: {} },
     async execute(_args, { signal }) {
       const question = { id: 'go', header: 'Go', question: 'Go?', options: [{ label: 'Yes' }, { label: 'No' }] };
       return JSON.stringify(await s.ask({ questions: [question] }, { signal }));

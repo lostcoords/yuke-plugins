@@ -45,7 +45,7 @@ async function opened(replies: readonly Reply[], models = [PRIMARY], renameWhile
   assert(titles !== undefined && sessions !== undefined);
   const session = await host.openSession();
   const service = sessions;
-  const title = async () => (await service.get(session.id)).session.title;
+  const title = async () => (await service.get(session.id)).title;
   return {
     host,
     session,
@@ -151,7 +151,7 @@ test("manual names and child sessions keep their titles", async () => {
   try {
     await child.sendMessage({ content: [{ kind: "userText", text: "Review login." }] });
     await child.waitForIdle();
-    assertEquals((await state.sessions.get(childId)).session.title, "Review login.");
+    assertEquals((await state.sessions.get(childId)).title, "Review login.");
   } finally {
     controller.abort();
   }

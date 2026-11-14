@@ -1,4 +1,4 @@
-import { FileSystemError, mkdir, readDir, readTextFile, remove, writeTextFile } from "yuke:fs";
+import { type DirEntry, FileSystemError, mkdir, readDir, readTextFile, remove, writeTextFile } from "yuke:fs";
 import type { ModelReference } from "yuke:protocol";
 
 export interface HistoryEntry {
@@ -76,7 +76,7 @@ export class History {
     try {
       sessionIds =
         sessionId === undefined
-          ? (await readDir(root))
+          ? (await Array.fromAsync(readDir(root)))
               .filter((item) => item.isDirectory && isSafeId(item.name))
               .map((item) => item.name)
           : [sessionId];
@@ -87,10 +87,10 @@ export class History {
 
     for (const currentSessionId of sessionIds) {
       const baseDir = `${root}/${currentSessionId}`;
-      let files: Awaited<ReturnType<typeof readDir>>;
+      let files: DirEntry[];
 
       try {
-        files = await readDir(baseDir);
+        files = await Array.fromAsync(readDir(baseDir));
       } catch (error) {
         if (isMissing(error)) continue;
         throw error;

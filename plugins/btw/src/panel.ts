@@ -231,12 +231,9 @@ export function openPanel(
 
 /** Wrap the heading with source mappings intact, accenting only the command, not the question. */
 function questionRows(text: string, width: number): TextRow[] {
-  const breaks = wrap(text, Math.max(1, width));
   const rows: TextRow[] = [];
 
-  for (let i = 0; i < breaks.length; i += 3) {
-    const from = breaks[i] as number;
-    const to = breaks[i + 1] as number;
+  for (const { start: from, end: to, soft } of wrap(text, Math.max(1, width))) {
     const split = Math.max(from, Math.min(to, "/btw".length));
 
     rows.push({
@@ -244,7 +241,7 @@ function questionRows(text: string, width: number): TextRow[] {
         { text: text.slice(from, split), style: "btw.title", source: { kind: "text", from, to: split } },
         { text: text.slice(split, to), style: "btw.question", source: { kind: "text", from: split, to } },
       ],
-      join: breaks[i + 2] === 1 ? "" : "\n",
+      join: soft ? "" : "\n",
     });
   }
 

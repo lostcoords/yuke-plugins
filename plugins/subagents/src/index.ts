@@ -1,6 +1,6 @@
 import type { JobReport, PluginContext, SessionContext, SessionHandle, Sessions } from "yuke:plugins";
 import type { InputId, SessionId, SessionRow, SessionSettings } from "yuke:protocol";
-import type { ToolContext, ToolResult } from "yuke:tools";
+import type { ToolContext, ToolExecuteResult } from "yuke:tools";
 import type { Tui } from "yuke:tui";
 import type { ListEntry } from "./list.ts";
 import { ModelList, modelId, resolveModel } from "./models.ts";
@@ -136,7 +136,7 @@ export async function session(s: SessionContext): Promise<undefined> {
     name: "spawn_subagent",
     description: SPAWN_DESCRIPTION,
     concurrency: "parallel",
-    parameters: {
+    inputSchema: {
       type: "object",
       properties: {
         description: { type: "string", description: "A label of 3 to 5 words for the user." },
@@ -160,7 +160,7 @@ export async function session(s: SessionContext): Promise<undefined> {
     name: "message_subagent",
     description: MESSAGE_DESCRIPTION,
     concurrency: "parallel",
-    parameters: {
+    inputSchema: {
       type: "object",
       properties: {
         id: { type: "string", description: "The id of the subagent." },
@@ -172,12 +172,12 @@ export async function session(s: SessionContext): Promise<undefined> {
     hints: { subject: { argument: "message", kind: "text" } },
     async execute(args, context) {
       const row = await rowOf(args.id);
-      if (row?.session.parent !== s.sessionId) {
+      if (row?.parent !== s.sessionId) {
         throw new Error(`The id ${args.id} names no subagent of this session.`);
       }
       const active = running.get(args.id);
       if (active === undefined) {
-        const model = row.session.model.model;
+        const model = row.model.model;
         return run(s, context, running, args.id, args.message, args.message, args.background, model);
       }
       active.inputs.push(await active.handle.sendMessage({ content: [{ kind: "userText", text: args.message }] }));
@@ -270,7 +270,7 @@ async function run(
   message: string,
   background: boolean,
   model: string,
-): Promise<ToolResult> {
+): Promise<ToolExecuteResult> {
   subagents.set(id, { parent: s.sessionId, label });
   const job = { id, label, background };
   const outcome = await context.jobs.run(job, (signal) => work(s, running, id, label, model, message, signal));

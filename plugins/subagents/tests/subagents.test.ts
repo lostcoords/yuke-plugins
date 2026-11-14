@@ -12,7 +12,7 @@ const SPAWN = { description: "Read the store", message: "Read the store.", backg
 /** What a test changes in `opened`. */
 interface Options {
   /** Answers each question of the host. */
-  readonly answer?: () => QuestionAnswer[];
+  readonly onQuestion?: () => QuestionAnswer[];
   /** Makes `prompt.build` of each subagent fail. */
   readonly failChild?: boolean;
   /** Takes the questions that the plugin asks in the parent. */
@@ -55,7 +55,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
       name: "gate",
       description: "Wait for the test.",
       concurrency: "parallel",
-      parameters: { type: "object", properties: {} },
+      inputSchema: { type: "object", properties: {} },
       execute: async (_args, context) => {
         const aborted = new Promise((resolve) => context.signal.addEventListener("abort", resolve));
         await Promise.race([gate.promise, aborted]);
@@ -66,7 +66,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
       name: "ask",
       description: "Ask the user.",
       concurrency: "serial",
-      parameters: { type: "object", properties: {} },
+      inputSchema: { type: "object", properties: {} },
       execute: async (_args, context) =>
         JSON.stringify(
           await s.ask(
@@ -89,7 +89,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   const host = await createHost({
     plugins: [{ name: "subagents", apply: pluginApply, session: pluginSession }],
     replies,
-    ...(options.answer === undefined ? {} : { answer: options.answer }),
+    ...(options.onQuestion === undefined ? {} : { onQuestion: options.onQuestion }),
   });
   const parent = await host.openSession();
   const list = sessions as unknown as Sessions;
@@ -106,7 +106,7 @@ const newest = (host: Opened["host"]) => host.requests.at(-1)?.messages.at(-1)?.
 async function childOf(opened: Opened): Promise<string> {
   const rows = (await opened.list.list({ parent: opened.parent.id })).sessions;
   assertEquals(rows.length, 1);
-  return rows[0]?.session.sessionId as string;
+  return rows[0]?.sessionId as string;
 }
 
 /** The notification that the parent reads for the report `text` of the subagent `id`. */
@@ -121,7 +121,7 @@ test("a background subagent reports to the parent and stays out of the session l
   const started = await parent.call("spawn_subagent", SPAWN);
   await waitForSettled();
   const id = await childOf(state);
-  const roots = (await list.list()).sessions.map((row) => row.session.sessionId);
+  const roots = (await list.list()).sessions.map((row) => row.sessionId);
 
   assertEquals(started.display, [{ kind: "markdown", text: "Running in the background" }]);
   assertEquals(
@@ -352,7 +352,7 @@ test("a question of the subagent reaches the parent, and its answer returns", as
   const state = await opened(
     [reply.toolCalls([{ name: "ask", args: {} }]), reply.text("It said yes."), reply.text("Thanks.")],
     {
-      answer: () => [{ id: "go", values: ["Yes"] }],
+      onQuestion: () => [{ id: "go", values: ["Yes"] }],
     },
   );
   const { host, parent } = state;

@@ -135,11 +135,11 @@ export class Titles {
     }
 
     const row = await this.#sessions.get(id);
-    const previous = row.session.title;
+    const previous = row.title;
 
     if (!manual) {
-      if (row.session.parent !== undefined) return;
-      if (row.session.forkOf !== undefined) return;
+      if (row.parent !== undefined) return;
+      if (row.forkOf !== undefined) return;
 
       const initial = Array.from(text.replace(/\s+/gu, " ").trim()).slice(0, 200).join("").trimEnd();
       if (previous !== undefined && previous !== initial) return;
@@ -201,7 +201,7 @@ Reply with ONLY the title, nothing else.`,
 
       // A manual rename during the request takes precedence over the generated title.
       const current = await this.#sessions.get(id);
-      if (current.session.title !== previous) {
+      if (current.title !== previous) {
         if (manual) this.#ctx.notify("info", "The session title changed while generating. Your title stays.");
         return;
       }
