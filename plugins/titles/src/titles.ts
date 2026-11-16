@@ -28,7 +28,7 @@ export async function firstMessage(
     const events = await sessions.events(id, { limit: 100, ...(before === undefined ? {} : { before }) });
 
     for (const event of [...events].reverse()) {
-      if (event.sessionUpdate !== "commit") continue;
+      if (event.kind !== "commit") continue;
 
       let offset = event.consumed.reduce((count, input) => count + input.blockCount, 0);
 
@@ -64,7 +64,7 @@ export class Titles {
 
     this.#remove = [
       ctx.addListener("session.update", (event) => {
-        if (event.update.sessionUpdate !== "inputAccepted" || this.#seen.has(event.sessionId)) return;
+        if (event.update.kind !== "inputAccepted" || this.#seen.has(event.sessionId)) return;
 
         const text = messageText(event.update.input);
         if (text === undefined) return;

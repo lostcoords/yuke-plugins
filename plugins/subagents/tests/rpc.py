@@ -171,7 +171,7 @@ def idle(session):
 def job(session, state):
     return (
         lambda message: message.get('params', {}).get('sessionId') == session
-        and update_of(message).get('sessionUpdate') == 'job'
+        and update_of(message).get('kind') == 'job'
         and update_of(message)['job']['state'] == state
     )
 
@@ -181,7 +181,7 @@ def report(session):
         update = update_of(message)
         return (
             message.get('params', {}).get('sessionId') == session
-            and update.get('sessionUpdate') == 'inputAccepted'
+            and update.get('kind') == 'inputAccepted'
             and update['input']['kind'] == 'notification'
         )
 
@@ -282,7 +282,7 @@ def question_flow(client, model, cwd):
     asked = client.until(
         'a question on the parent',
         lambda message: message.get('params', {}).get('sessionId') == parent
-        and update_of(message).get('sessionUpdate') == 'interactionRequested',
+        and update_of(message).get('kind') == 'interactionRequested',
     )
     update = update_of(asked)
     assert update['source'] == 'subagents', update

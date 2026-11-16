@@ -302,7 +302,7 @@ function holdParent(s: SessionContext): ParentView {
       onEvent(event) {
         const updates = event.kind === "snapshot" ? event.snapshot.updates : [event.update];
         for (const update of updates) {
-          if (update.sessionUpdate !== "state") continue;
+          if (update.kind !== "state") continue;
           if (update.state === "idle") busy.delete(s.sessionId);
           else busy.add(s.sessionId);
           redraw();
@@ -342,7 +342,7 @@ async function work(
       tail: 0,
       signal: ended.signal,
       onEvent(event) {
-        if (event.kind === "snapshot" || event.update.sessionUpdate !== "interactionRequested") return;
+        if (event.kind === "snapshot" || event.update.kind !== "interactionRequested") return;
         const update = event.update;
         // A subagent has no user, so the parent asks its user.
         void s.ask({ questions: update.request.questions }, { signal: ended.signal }).then((answers) => {
@@ -397,7 +397,7 @@ async function stop(active: Running): Promise<void> {
 async function reportOf(id: SessionId, before: number): Promise<JobReport> {
   const events = await sessions.events(id, { limit: REPORT_EVENTS });
   const commits = events.flatMap((event) =>
-    event.sessionUpdate === "commit" && event.seq > before ? [event.commit] : [],
+    event.kind === "commit" && event.seq > before ? [event.commit] : [],
   );
   // A failed hook leaves the input pending and saves no commit.
   if (commits.length === 0) return { status: "failed", text: "The subagent did not start. A notice tells why." };
