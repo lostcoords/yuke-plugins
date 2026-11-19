@@ -5,7 +5,7 @@ Ask side questions while Yuke works, without changing the main conversation. Ans
 ## Installation
 
 ```sh
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/btw
+yuke plugin add https://github.com/lostcoords/yuke-plugins btw
 ```
 
 Run `/reload` while idle.

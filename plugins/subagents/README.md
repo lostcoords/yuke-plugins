@@ -5,7 +5,7 @@ Let the agent delegate work to subagents with separate context and receive their
 ## Installation
 
 ```sh
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/subagents
+yuke plugin add https://github.com/lostcoords/yuke-plugins subagents
 ```
 
 Run `/reload` while idle.

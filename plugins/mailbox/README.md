@@ -5,7 +5,7 @@ Send direct messages between open Yuke sessions on the same machine. Requires ma
 ## Installation
 
 ```sh
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/mailbox
+yuke plugin add https://github.com/lostcoords/yuke-plugins mailbox
 ```
 
 Run `/reload` while idle in each Yuke process.

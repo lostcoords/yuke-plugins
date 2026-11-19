@@ -3,7 +3,7 @@
 Automatically name new Yuke sessions from their first message.
 
 ```sh
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/titles
+yuke plugin add https://github.com/lostcoords/yuke-plugins titles
 ```
 
 ## Setup

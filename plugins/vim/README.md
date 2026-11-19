@@ -5,7 +5,7 @@ Vim editing for Yuke composers. Transcript navigation is not supported.
 ## Installation
 
 ```sh
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/vim
+yuke plugin add https://github.com/lostcoords/yuke-plugins vim
 ```
 
 Run `/reload` while idle.

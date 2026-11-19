@@ -14,24 +14,13 @@ Small, independent plugins for [Yuke](https://github.com/lostcoords/yuke).
 
 ## Installation
 
-Requires Yuke with the plugin manager. Run the command for each plugin you want.
+Requires Yuke with the plugin manager. Name the plugins that you want:
 
 ```sh
-# btw
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/btw
-
-# mailbox
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/mailbox
-
-# subagents
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/subagents
-
-# titles
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/titles
-
-# vim
-yuke plugin add https://github.com/lostcoords/yuke-plugins --folder plugins/vim
+yuke plugin add https://github.com/lostcoords/yuke-plugins btw mailbox subagents
 ```
+
+Or run `/plugins` in Yuke, press `a`, paste the URL of this repository, and select a plugin.
 
 Run `/reload` while idle. Use `/plugins` to manage and update installed plugins.
 
