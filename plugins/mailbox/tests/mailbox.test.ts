@@ -36,7 +36,7 @@ async function opened(replies: readonly Reply[] = []) {
   const second = await host.openSession();
   assert(sessions !== undefined);
 
-  return { host, first, second, sessions, dataDir, target: agentId(second.settings.cwd, second.id) };
+  return { host, first, second, sessions, dataDir, target: agentId(second.settings.folder, second.id) };
 }
 
 /** Read the result as an agent does, and fail if the call failed. */
@@ -130,7 +130,7 @@ test("agents discover other open sessions with their ids, current titles and fol
   const other = await list(state.second);
   const result = await list(state.first);
 
-  const folder = state.second.settings.cwd;
+  const folder = state.second.settings.folder;
   assertEquals(result.agents, [{ id: state.target, title: "Review the API", folder, activity: "idle" }]);
   assertEquals(other.self, state.target);
   assertEquals(
@@ -170,7 +170,7 @@ test("a direct message wakes an idle session and reaches the model as an agent n
 
   const line = text.split("\n").at(-1)?.replace("</system_notification>", "") ?? "";
   assertEquals(JSON.parse(line) as { from: Sender; message: string }, {
-    from: { id: from, title: "Plan the database migration for the tenants", folder: state.first.settings.cwd },
+    from: { id: from, title: "Plan the database migration for the tenants", folder: state.first.settings.folder },
     message: "The migration is ready.\nUse tenant_id.",
   });
 

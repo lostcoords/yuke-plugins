@@ -77,7 +77,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
     });
     if (s.parent === undefined && options.runs !== undefined) {
       await mkdir(`${dataDirectory}/running`, { recursive: true });
-      await writeTextFile(`${s.sessionId}.json`, JSON.stringify(options.runs), { cwd: `${dataDirectory}/running` });
+      await writeTextFile(`${s.sessionId}.json`, JSON.stringify(options.runs), { folder: `${dataDirectory}/running` });
     }
     const notify = options.notice;
     const overrides = {
@@ -326,7 +326,7 @@ test("a cancelled turn reports cancelled, not completed", async () => {
   const id = await childOf(state);
   const closed = new AbortController();
   const child = await list.open(id, { tail: 0, signal: closed.signal, onEvent() {} });
-  child.cancel();
+  child.cancelTurn();
   await waitForSettled();
   closed.abort();
 
@@ -479,7 +479,7 @@ test("the view of the parent stays until its last subagent ends", async () => {
 /** The running subagents that the log file of `parent` holds. */
 async function logged(dataDir: string, parent: string): Promise<readonly string[]> {
   try {
-    const text = await readTextFile(`${parent}.json`, { cwd: `${dataDir}/running` });
+    const text = await readTextFile(`${parent}.json`, { folder: `${dataDir}/running` });
     return (JSON.parse(text) as { readonly id: string }[]).map((run) => run.id);
   } catch {
     return [];

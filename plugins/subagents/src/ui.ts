@@ -1,7 +1,7 @@
-import { type ChatReadOnly, type ChatService, composerRows } from "yuke:chat";
+import type { ChatReadOnly, ChatService } from "yuke:chat";
 import type { PluginContext } from "yuke:plugins";
 import type { SessionId } from "yuke:protocol";
-import { type KeyEvent, strokeOf, type Tui, type View } from "yuke:tui";
+import { fit, type KeyEvent, strokeOf, type Tui, type View } from "yuke:tui";
 import { type ListEntry, listRows, SHOWN } from "./list.ts";
 import { openModelDialog } from "./model-dialog.ts";
 import type { ModelList } from "./models.ts";
@@ -32,10 +32,12 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
   const chat: ChatService = ctx.get("chat");
   let selected: { readonly pane: View; readonly parent: SessionId; index: number } | undefined;
   let tick: (() => void) | undefined;
+  let removeHint: (() => void) | undefined;
 
   const leave = (): void => {
     selected = undefined;
-    tui.status.delete("subagents");
+    removeHint?.();
+    removeHint = undefined;
     tui.requestFrame();
   };
 
@@ -71,11 +73,11 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
 
   chat.addComposerView("below", (_mount, pane) => {
     const rowsAt = (width: number): string[] =>
-      pane.session === undefined ? [] : listRows(source.running(pane.session), width, tui.now());
+      pane.sessionId === undefined ? [] : listRows(source.running(pane.sessionId), width, tui.now());
     return {
       heightFor: (width) => rowsAt(width).length,
       draw: (canvas) => {
-        const chosen = selected?.pane === pane.view && selected.parent === pane.session ? selected.index : undefined;
+        const chosen = selected?.pane === pane.view && selected.parent === pane.sessionId ? selected.index : undefined;
         // A short place scrolls, so the selected row stays in sight.
         const first = Math.max(0, (chosen ?? 0) - canvas.height + 1);
         for (const [at, text] of rowsAt(canvas.width).slice(first, first + canvas.height).entries()) {
@@ -85,20 +87,26 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     };
   });
 
-  chat.addComposerView("above", (_mount, pane) =>
-    composerRows(() => {
-      if (pane.session === undefined || source.busy(pane.session)) return [];
-      const count = source.running(pane.session).length;
-      if (count === 0) return [];
-      return [{ text: `Waiting for ${count} ${count === 1 ? "subagent" : "subagents"}`, style: { dim: true } }];
-    }),
-  );
+  chat.addComposerView("above", (_mount, pane) => {
+    const waiting = (): number =>
+      pane.sessionId === undefined || source.busy(pane.sessionId) ? 0 : source.running(pane.sessionId).length;
+    return {
+      heightFor: () => (waiting() === 0 ? 0 : 1),
+      draw: (canvas) => {
+        const count = waiting();
+        if (count === 0) return;
+        const text = `Waiting for ${count} ${count === 1 ? "subagent" : "subagents"}`;
+        const shown = fit(text, canvas.width) === text.length ? text : `${text.slice(0, fit(text, canvas.width - 1))}…`;
+        canvas.text(0, 0, shown, { dim: true });
+      },
+    };
+  });
 
   /** Take a key while a row is selected. A key with no meaning here leaves the selection and goes on to the composer. */
   const selectedKey = (event: KeyEvent): boolean => {
     if (selected === undefined) return false;
     // The pane can show another session, as after `chat.show`, and the selection stays with its list.
-    if (chat.session(selected.pane) !== selected.parent) {
+    if (chat.sessionIdOf(selected.pane) !== selected.parent) {
       leave();
       return false;
     }
@@ -140,11 +148,11 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     // This phase comes after the keymap, so a browse of older messages keeps its Down.
     extension.addKeyHandler((event) => {
       if (strokeOf(event) !== "down") return false;
-      const parent = pane.session;
+      const parent = pane.sessionId;
       if (parent === undefined || source.running(parent).length === 0) return false;
       if (composer.rows.point(composer.caret)?.row !== composer.rows.count - 1) return false;
       selected = { pane: pane.view, parent, index: 0 };
-      tui.status.set("subagents", { text: HINT, side: "left", order: 0 });
+      removeHint = tui.status.set("subagents", { text: HINT, side: "left", order: 0 });
       tui.requestFrame();
       return true;
     });

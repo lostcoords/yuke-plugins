@@ -132,7 +132,7 @@ function isDead(error: unknown): boolean {
  * The folder comes from the runtime id, never from a file, so a bad entry deletes nothing else.
  */
 async function forget(registry: string, runtime: string): Promise<void> {
-  await remove(`${runtime}.json`, { cwd: registry, force: true });
+  await remove(`${runtime}.json`, { folder: registry, force: true });
   await remove(socketFolder(runtime), { recursive: true, force: true });
 }
 
@@ -167,7 +167,7 @@ export class Mailbox {
         (error) => this.#ctx.notify("error", `mailbox endpoint failed: ${String(error)}`),
       );
 
-      await writeTextFile(`${this.#runtime}.json`, "", { cwd: this.#registry, mode: 0o600, signal });
+      await writeTextFile(`${this.#runtime}.json`, "", { folder: this.#registry, mode: 0o600, signal });
     } catch (error) {
       await this.close();
       throw error;
@@ -198,7 +198,7 @@ export class Mailbox {
     }
 
     return {
-      self: agentId(s.cwd, s.sessionId),
+      self: agentId(s.folder, s.sessionId),
       agents: [...agents.values()].sort((left, right) => left.id.localeCompare(right.id)),
     };
   }
@@ -207,7 +207,7 @@ export class Mailbox {
   async send(s: SessionContext, to: string, message: string, signal: AbortSignal) {
     if (message.trim() === "") throw new Error("the message is empty");
     if (!AGENT.test(to)) throw new Error("the target is not an agent id from mailbox_list_agents");
-    if (to === agentId(s.cwd, s.sessionId)) throw new Error("the target is your own id");
+    if (to === agentId(s.folder, s.sessionId)) throw new Error("the target is your own id");
 
     const matches = (await this.#peers(signal)).filter((peer) => peer.id === to);
     if (matches.length === 0) throw new Error("the target session is no longer open");
@@ -284,10 +284,10 @@ export class Mailbox {
     const row = await this.#sessions.get(s.sessionId);
 
     return {
-      id: agentId(s.cwd, s.sessionId),
+      id: agentId(s.folder, s.sessionId),
       sessionId: s.sessionId,
       title: row.title ?? null,
-      folder: row.cwd,
+      folder: row.folder,
       activity: row.state,
     };
   }

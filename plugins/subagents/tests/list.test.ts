@@ -69,7 +69,7 @@ async function shown(replies: readonly Reply[]) {
       readOnly = source;
       return () => {};
     },
-    session: () => session,
+    sessionIdOf: () => session,
     show: async (id: string) => {
       showed.push(id);
     },
@@ -94,7 +94,7 @@ async function shown(replies: readonly Reply[]) {
   const pane = {
     view: composer,
     composer,
-    get session() {
+    get sessionId() {
       return session as never;
     },
     running: false,
@@ -110,7 +110,7 @@ async function shown(replies: readonly Reply[]) {
     const rows: Row[] = [];
     const mount = { signal: new AbortController().signal, close() {} };
     const view = create?.(mount, {
-      session: id as never,
+      sessionId: id as never,
       view: composer,
       composer,
       running: false,

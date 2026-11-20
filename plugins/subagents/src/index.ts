@@ -256,7 +256,7 @@ async function settingsOf(s: SessionContext, chosen: string | undefined): Promis
   return {
     model: resolved.model,
     settings: { ...s.settings.settings, reasoning: resolved.reasoning },
-    cwd: s.settings.cwd,
+    folder: s.settings.folder,
   };
 }
 
@@ -387,7 +387,7 @@ async function work(
 async function stop(active: Running): Promise<void> {
   try {
     for (const id of active.inputs) await active.handle.removeInput(id);
-    active.handle.cancel();
+    active.handle.cancelTurn();
   } catch {
     // The session closed first, so no turn remains to stop.
   }
