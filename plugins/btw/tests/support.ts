@@ -46,7 +46,7 @@ export function fakeChat(session: () => string | undefined = () => undefined): P
     provides: ["chat"],
     apply: (ctx) => {
       ctx.provide("chat", {
-        session,
+        sessionIdOf: session,
         show: async () => {},
         addChangeListener: () => () => {},
         addPaneWatcher: () => () => {},

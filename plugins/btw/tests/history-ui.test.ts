@@ -61,7 +61,7 @@ for (const width of [32, 100]) {
       .split("\n")
       .find((line) => line.trim().startsWith("/btw "));
     assert(header !== undefined, "Saved answers use the same command/question heading without a timestamp.");
-    const editor = loaded.tui.widgets.list().find((mount) => mount.widget === loaded.tui.focused)?.widget;
+    const editor = loaded.tui.widgets.list().find((mount) => mount.widget === loaded.tui.focusedView)?.widget;
     assert(editor?.kind === "editor");
     assertEquals(editor.state.text, "");
     frame.key("ctrl+y");
@@ -245,7 +245,7 @@ test("storage failure preserves the answer and reports that it was not saved", a
   await using host = loaded.host;
   await loaded.main.sendMessage("main task");
   await mkdir(`${loaded.dataDir}/history`);
-  await writeTextFile(`history/${loaded.main.id}`, "not a directory", { cwd: loaded.dataDir });
+  await writeTextFile(`history/${loaded.main.id}`, "not a directory", { folder: loaded.dataDir });
   loaded.tui.commands.run("btw:ask");
   frame.draw();
   frame.paste("side question");
@@ -316,24 +316,24 @@ test("an arriving answer preserves output focus and the next independent draft",
 
   loaded.tui.commands.run("btw:ask");
   frame.draw();
-  const editor = loaded.tui.widgets.list().find((mount) => mount.widget === loaded.tui.focused)?.widget;
+  const editor = loaded.tui.widgets.list().find((mount) => mount.widget === loaded.tui.focusedView)?.widget;
   assert(editor?.kind === "editor");
 
   frame.paste("a side question");
   frame.key("enter");
   frame.paste("the next independent draft");
   frame.key("tab");
-  const output = loaded.tui.focused;
+  const output = loaded.tui.focusedView;
   assert(output !== undefined && output !== editor);
 
   await waitForScreen(frame, "the new side answer");
-  assertEquals(loaded.tui.focused, output, "Request completion must not steal focus back from the answer.");
+  assertEquals(loaded.tui.focusedView, output, "Request completion must not steal focus back from the answer.");
   assertEquals(editor.state.text, "the next independent draft");
 
   frame.key("ctrl+y");
   assertEquals(frame.copies, ["the new side answer"]);
   frame.key("tab");
-  assertEquals(loaded.tui.focused, editor);
+  assertEquals(loaded.tui.focusedView, editor);
   assertEquals(editor.state.text, "the next independent draft");
   assertEquals(host.requests.length, 2);
 });

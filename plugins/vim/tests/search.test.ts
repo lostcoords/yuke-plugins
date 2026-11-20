@@ -6,14 +6,14 @@ test("literal search finds the next match and repeat search wraps in both direct
   const fixture = composer("one two one");
   using frame = fixture.frame;
   frame.key("esc alt+/");
-  assert(fixture.surface.tui.focused instanceof TextEditor);
-  assertEquals(fixture.surface.tui.focused.role, "field");
+  assert(fixture.surface.tui.focusedView instanceof TextEditor);
+  assertEquals(fixture.surface.tui.focusedView.role, "field");
   frame.key("o n e enter");
   // The prompt closes after its answer, and the focus comes back at the next draw.
   await waitForSettled();
   frame.draw();
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["one two one", 8]);
-  assertEquals(fixture.surface.tui.focused, fixture.editor);
+  assertEquals(fixture.surface.tui.focusedView, fixture.editor);
   frame.key("n");
   assertEquals(fixture.editor.caret, 0);
   frame.key("N");
@@ -51,7 +51,7 @@ test("cancel of a search leaves the draft and caret unchanged", () => {
   using frame = fixture.frame;
   frame.key("esc w alt+/ o n e esc");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["one two one", 4]);
-  assertEquals(fixture.surface.tui.focused, fixture.editor);
+  assertEquals(fixture.surface.tui.focusedView, fixture.editor);
   frame.key("x");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["one wo one", 4]);
 });
@@ -97,7 +97,7 @@ test("a search dialog closes when its composer leaves the tree", () => {
   const replacement = new TextEditor({ role: "field" });
   fixture.surface.tui.wrapRoot(() => replacement);
   frame.draw();
-  assertEquals(fixture.surface.tui.focused, replacement);
+  assertEquals(fixture.surface.tui.focusedView, replacement);
   frame.key("X");
   assertEquals([replacement.state.text, fixture.editor.state.text], ["X", "old draft"]);
 });

@@ -56,7 +56,7 @@ export class History {
 
     await mkdir(baseDir, { recursive: true, mode: 0o700 });
     await writeTextFile(`${saved.id}.json`, `${JSON.stringify(saved)}\n`, {
-      cwd: baseDir,
+      folder: baseDir,
       atomic: true,
       mode: 0o600,
     });
@@ -99,7 +99,7 @@ export class History {
         if (!file.isFile || !/^[a-zA-Z0-9_-]+\.json$/.test(file.name)) continue;
 
         try {
-          const value: unknown = JSON.parse(await readTextFile(file.name, { cwd: baseDir, fatal: true }));
+          const value: unknown = JSON.parse(await readTextFile(file.name, { folder: baseDir, fatal: true }));
           if (!isHistoryEntry(value) || value.sessionId !== currentSessionId || `${value.id}.json` !== file.name) {
             throw new Error("Invalid or unsupported history record.");
           }
@@ -119,6 +119,6 @@ export class History {
   async remove(saved: HistoryEntry): Promise<void> {
     if (!isSafeId(saved.sessionId) || !isSafeId(saved.id)) throw new Error("Invalid history record ID.");
 
-    await remove(`history/${saved.sessionId}/${saved.id}.json`, { cwd: this.dataDir, force: true });
+    await remove(`history/${saved.sessionId}/${saved.id}.json`, { folder: this.dataDir, force: true });
   }
 }

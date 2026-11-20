@@ -43,7 +43,7 @@ export function browseHistory(
     },
     body: picker,
     keys: [
-      { key: "enter", label: "open", when: () => picker.selected !== undefined, run: () => picker.choose() },
+      { key: "enter", label: "open", when: () => picker.selectedItem !== undefined, run: () => picker.choose() },
       {
         key: "tab",
         label: "scope",
@@ -56,9 +56,9 @@ export function browseHistory(
       {
         key: "ctrl+d",
         label: "delete",
-        when: () => picker.selected !== undefined,
+        when: () => picker.selectedItem !== undefined,
         run: () => {
-          if (picker.selected !== undefined) void remove([picker.selected]);
+          if (picker.selectedItem !== undefined) void remove([picker.selectedItem]);
         },
       },
       {
@@ -101,7 +101,7 @@ export function browseHistory(
     if (targets.length === 0) return;
     const scope = allSessions ? "across sessions" : "from this session";
     // A deletion asks for a typed word, so a stray Enter deletes nothing.
-    const typed = await tui.input({
+    const typed = await tui.prompt({
       title: `Delete ${targets.length} saved answer(s) ${scope}?`,
       placeholder: "Type DELETE to confirm",
       signal: dialog.signal,

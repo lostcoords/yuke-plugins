@@ -20,7 +20,7 @@ for (const width of [32, 100]) {
     surface.tui.panes.split(() => ({ draw() {} }));
     surface.tui.commands.run("btw:ask");
     frame.draw();
-    const input = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focused)?.widget;
+    const input = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focusedView)?.widget;
     assert(input?.kind === "editor");
     const fieldHeight = () => {
       const rule = rows(frame).findLastIndex((line) => /^─+$/.test(line.trim()));
@@ -89,7 +89,7 @@ for (const width of [32, 100]) {
     frame.key("tab");
     frame.mouse(mouse);
     frame.mouse({ ...mouse, action: "release" });
-    assertEquals(surface.tui.focused, input);
+    assertEquals(surface.tui.focusedView, input);
     frame.paste("X");
     assertEquals(input.state.text, "abXcdef", "Mouse placement must include both the field and desktop insets.");
     assertEquals(host.requests.length, 0, "Editing a draft must not contact a model.");

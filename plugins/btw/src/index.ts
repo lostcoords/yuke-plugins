@@ -17,7 +17,7 @@ export function apply(ctx: PluginContext): undefined {
   const history = new History(ctx.dataDir);
 
   const start = (pane: View | undefined, question = ""): boolean => {
-    const sessionId = pane === undefined ? undefined : ctx.get("chat").session(pane);
+    const sessionId = pane === undefined ? undefined : ctx.get("chat").sessionIdOf(pane);
 
     if (question !== "" && cachedModel(sessionId) === undefined) {
       ctx.notify("info", NO_ROUND);
@@ -34,7 +34,7 @@ export function apply(ctx: PluginContext): undefined {
     argumentHint: "<question>",
     description: "Ask a parallel side question using the main round's cache",
     // A question without a round keeps its draft.
-    run: (args) => (start(tui.panes.active?.view, typeof args === "string" ? args : "") ? undefined : false),
+    run: (args) => (start(tui.panes.activePane?.view, typeof args === "string" ? args : "") ? undefined : false),
   });
 
   tui.commands.add({
@@ -42,8 +42,8 @@ export function apply(ctx: PluginContext): undefined {
     slash: "btw:history",
     description: "Browse saved side answers",
     run: () => {
-      const pane = tui.panes.active?.view;
-      const sessionId = pane === undefined ? undefined : ctx.get("chat").session(pane);
+      const pane = tui.panes.activePane?.view;
+      const sessionId = pane === undefined ? undefined : ctx.get("chat").sessionIdOf(pane);
 
       browseHistory(ctx, tui, history, sessionId, (entry) => {
         openPanel(ctx, tui, history, sessionId, entry);

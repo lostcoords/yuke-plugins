@@ -31,14 +31,14 @@ const SONNET = { model: "anthropic/claude-sonnet", reasoning: "default" } as con
 async function dialog(saved?: SavedModels) {
   const frame = createFrame({ width: 76, height: 12 });
   const dataDir = folder();
-  if (saved !== undefined) await writeTextFile("settings.json", JSON.stringify(saved), { cwd: dataDir });
+  if (saved !== undefined) await writeTextFile("settings.json", JSON.stringify(saved), { folder: dataDir });
   const failures: string[] = [];
   await openModelDialog(frame.surface("titles").tui, new ModelList(dataDir, CATALOG), (text) => failures.push(text));
   frame.draw();
   return {
     frame,
     failures,
-    stored: async (): Promise<SavedModels> => JSON.parse(await readTextFile("settings.json", { cwd: dataDir })),
+    stored: async (): Promise<SavedModels> => JSON.parse(await readTextFile("settings.json", { folder: dataDir })),
   };
 }
 
@@ -47,20 +47,20 @@ test("a missing or empty settings file reads as an empty model list, and saved m
   const list = new ModelList(dataDir, CATALOG);
 
   assertEquals(await list.read(), { models: [] });
-  await writeTextFile("settings.json", "  \n", { cwd: dataDir });
+  await writeTextFile("settings.json", "  \n", { folder: dataDir });
   assertEquals(await list.read(), { models: [] });
-  await writeTextFile("settings.json", "{}", { cwd: dataDir });
+  await writeTextFile("settings.json", "{}", { folder: dataDir });
   assertEquals(await list.read(), { models: [] });
   await list.write({ models: [OPUS, SONNET] });
   assertEquals(await list.read(), { models: [OPUS, SONNET] });
-  assertEquals(JSON.parse(await readTextFile("settings.json", { cwd: dataDir })), { models: [OPUS, SONNET] });
+  assertEquals(JSON.parse(await readTextFile("settings.json", { folder: dataDir })), { models: [OPUS, SONNET] });
 });
 
 test("saved entries need nonempty model and reasoning strings", async () => {
   const dataDir = folder();
   const list = new ModelList(dataDir, CATALOG);
   await writeTextFile("settings.json", JSON.stringify({ models: [{ model: "", reasoning: "high" }] }), {
-    cwd: dataDir,
+    folder: dataDir,
   });
 
   const error = await assertRejects(() => list.read());

@@ -173,7 +173,7 @@ export function openPanel(
 
         case "tab":
         case "shift+tab":
-          tui.focus(tui.focused === editor ? output : editor);
+          tui.focus(tui.focusedView === editor ? output : editor);
           break;
 
         case "ctrl+r":

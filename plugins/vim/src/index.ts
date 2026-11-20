@@ -15,7 +15,7 @@ export function apply(ctx: PluginContext): (() => void) | undefined {
     return composer.bind(editor, mount.signal);
   });
   const stopFocus = tui.addFocusListener((change) => {
-    if (change.previous instanceof TextEditor) composer.cancel(change.previous);
+    if (change.previousView instanceof TextEditor) composer.cancel(change.previousView);
     composer.updateStatus();
   });
   let stopped = false;

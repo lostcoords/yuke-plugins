@@ -276,7 +276,7 @@ for (const width of [32, 100]) {
     assertEquals(screen(frame), answered, "Loading must stop after the answer arrives.");
     assert(answered.includes("A side answer."), answered);
     assert(answered.indexOf("my side question") < answered.indexOf("A side answer."), answered);
-    assertEquals(surface.tui.focused, input);
+    assertEquals(surface.tui.focusedView, input);
     assertEquals(input.state.text, "my next draft", "An arriving answer must preserve the next draft.");
     assert(answered.includes("MAIN WORK"), answered);
     frame.key("ctrl+y");
@@ -320,10 +320,9 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     await waitForRequests(host, 1);
     new ChatCompletions(composer, {
       providers: () => [slashCompletions(surface.tui.commands)],
-      cwd: () => "/",
+      folder: () => "/",
       signal: controller.signal,
       enabled: () => true,
-      onChange: () => {},
       onError: (error) => {
         throw error;
       },
@@ -360,7 +359,7 @@ for (const draft of ["/btw", "/btw explain this side question"]) {
     assertEquals(sideInput.state.text, "", "Both /btw entry paths leave the side composer empty.");
     assert(answered.indexOf("explain this side question") < answered.indexOf("Answer to the side question."), answered);
     frame.key("esc");
-    assertEquals(surface.tui.focused, composer);
+    assertEquals(surface.tui.focusedView, composer);
     controller.abort();
     await running;
   });
@@ -481,7 +480,7 @@ for (const outcome of ["error", "cancel"]) {
     if (outcome === "error") {
       assert(stopped.includes("Side request failed"), stopped);
       assert(stopped.includes("/btw side question"));
-      const editor = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focused)?.widget;
+      const editor = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focusedView)?.widget;
       assert(editor?.kind === "editor");
       assertEquals(editor.state.text, "");
     } else assert(!stopped.includes(" /btw "));
