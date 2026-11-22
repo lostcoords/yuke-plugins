@@ -177,8 +177,9 @@ export async function session(s: SessionContext): Promise<undefined> {
       }
       const active = running.get(args.id);
       if (active === undefined) {
-        const model = row.model.model;
-        return run(s, context, running, args.id, args.message, args.message, args.background, model);
+        // A subagent of an earlier process has no label here, so its message names it.
+        const label = subagents.get(args.id)?.label ?? args.message;
+        return run(s, context, running, args.id, label, args.message, args.background, row.model.model);
       }
       active.inputs.push(await active.handle.sendMessage({ content: [{ kind: "userText", text: args.message }] }));
       return {
@@ -220,7 +221,7 @@ async function tellInterrupted(s: SessionContext): Promise<void> {
   });
 }
 
-/** The row of the session `id`, or `undefined` when no session has that id, also for a malformed id. */
+/** The row of the session `id`, or `undefined` when no session has that id. A malformed id throws before it gives a promise. */
 async function rowOf(id: string): Promise<SessionRow | undefined> {
   try {
     return await sessions.get(id);

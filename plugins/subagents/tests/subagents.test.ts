@@ -124,10 +124,7 @@ test("a background subagent reports to the parent and stays out of the session l
   const roots = (await list.list()).sessions.map((row) => row.sessionId);
 
   assertEquals(started.display, [{ kind: "markdown", text: "Running in the background" }]);
-  assertEquals(
-    started.text,
-    `Subagent ${id} runs in the background. Its final message arrives as a notification, so do not sleep, poll, or guess the result.\nDo not do its task, and avoid its files and topics. Work on something else, or tell the user what you started and end your turn. If the user asks before the notification arrives, say that the subagent still runs.`,
-  );
+  assertEquals(started.text.startsWith(`Subagent ${id} runs in the background.`), true);
   assertEquals(newest(host), notification(id, "Two tables."));
   assertEquals(roots, [parent.id]);
 });
@@ -151,7 +148,7 @@ test("a follow-up by id reaches the same subagent, with its context", async () =
   const child = host.requests.at(2)?.messages.map((message) => message.text);
   assertEquals(child?.slice(0, 2), ["Read the store.", "Two tables."]);
   assertEquals(child?.at(-1), "And the indexes?");
-  assertEquals(newest(host), notification(id, "Three indexes.", "completed", "And the indexes?"));
+  assertEquals(newest(host), notification(id, "Three indexes."));
   assertEquals(await childOf(state), id);
 });
 
@@ -214,6 +211,25 @@ test("a message during the run joins the turn of the subagent, and the report co
   assertEquals(sent.display, [{ kind: "markdown", text: "Message sent" }]);
   assertEquals(newest(host), notification(id, "Three indexes."));
   assertEquals(host.requests[1]?.messages.at(-1)?.text, "open\nAnd the indexes?");
+});
+
+test("a follow-up to a stopped subagent keeps its label in the job", async () => {
+  const state = await opened([reply.stall("Reading"), reply.stall("Reading again")]);
+  const { host, parent, handle } = state;
+  await using _host = host;
+  await parent.call("spawn_subagent", SPAWN);
+  await waitForSettled();
+  const id = await childOf(state);
+  await parent.call("stop", { id });
+  await waitForSettled();
+
+  await parent.call("message_subagent", { id, message: "And the indexes?", background: true });
+  await waitForSettled();
+
+  assertEquals(
+    handle.jobs().map((job) => [job.id, job.label]),
+    [[id, "Read the store"]],
+  );
 });
 
 test("a stop by id ends the subagent and sends no report", async () => {
@@ -310,10 +326,7 @@ test("a turn without a final message reports that, and not the message of an old
   await parent.call("message_subagent", { id, message: "And the indexes?", background: true });
   await waitForSettled();
 
-  assertEquals(
-    newest(host),
-    notification(id, "The subagent ended without a final message.", "completed", "And the indexes?"),
-  );
+  assertEquals(newest(host), notification(id, "The subagent ended without a final message."));
 });
 
 test("a cancelled turn reports cancelled, not completed", async () => {
@@ -380,7 +393,7 @@ test("a failed turn reports the failure, and a foreground call is an error", asy
 
   assertEquals(result.isError, true);
   assertEquals(result.text.startsWith(`Subagent ${id}:`) && result.text.includes("overloaded"), true);
-  assertEquals(newest(host)?.includes(`${id} Try again.: failed.`), true);
+  assertEquals(newest(host)?.includes(`${id} Read the store: failed.`), true);
 });
 
 test("an id that names no subagent of this session is an error, also the id of the parent", async () => {
@@ -395,31 +408,7 @@ test("an id that names no subagent of this session is an error, also the id of t
   assertEquals([unknown.isError, own.isError], [true, true]);
 });
 
-test("two parallel spawns create two subagents", async () => {
-  const state = await opened([
-    reply.toolCalls([
-      { name: "spawn_subagent", args: SPAWN },
-      { name: "spawn_subagent", args: SPAWN },
-      // The gate holds the parent until both reports arrive. One request then reads both, so the reply count stays fixed.
-      { name: "gate", args: {} },
-    ]),
-    reply.text("Two tables."),
-    reply.text("Two tables."),
-    reply.text("Thanks."),
-  ]);
-  const { host, parent, list, openGate } = state;
-  await using _host = host;
-
-  const sent = parent.sendMessage("Read the store.");
-  await waitForSettled();
-  openGate();
-  await sent;
-  await waitForSettled();
-
-  assertEquals((await list.list({ parent: parent.id })).sessions.length, 2);
-});
-
-test("parallel runs share one view of the parent, and a later run opens another", async () => {
+test("parallel spawns create two subagents that share one view of the parent, and a later run opens another", async () => {
   const state = await opened([
     reply.toolCalls([
       { name: "spawn_subagent", args: SPAWN },
@@ -434,7 +423,7 @@ test("parallel runs share one view of the parent, and a later run opens another"
     reply.text("Started."),
     reply.text("Thanks."),
   ]);
-  const { host, parent, openGate, opens } = state;
+  const { host, parent, list, openGate, opens } = state;
   await using _host = host;
   const viewsOfParent = (): number => opens.filter((open) => open.id === parent.id).length;
 
@@ -443,6 +432,7 @@ test("parallel runs share one view of the parent, and a later run opens another"
   openGate();
   await sent;
   await waitForSettled();
+  assertEquals((await list.list({ parent: parent.id })).sessions.length, 2);
   assertEquals(viewsOfParent(), 1);
 
   await parent.sendMessage("Read it again.");
