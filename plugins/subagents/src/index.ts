@@ -1,5 +1,5 @@
 import type { JobReport, PluginContext, SessionContext, SessionHandle, Sessions } from "yuke:plugins";
-import type { InputId, SessionId, SessionRow, SessionSettings } from "yuke:protocol";
+import type { InputId, SessionId, SessionSettings } from "yuke:protocol";
 import type { ToolContext, ToolExecuteResult } from "yuke:tools";
 import type { Tui } from "yuke:tui";
 import type { ListEntry } from "./list.ts";
@@ -171,7 +171,8 @@ export async function session(s: SessionContext): Promise<undefined> {
     },
     hints: { title: "Message subagent", subject: { argument: "message", kind: "text" } },
     async execute(args, context) {
-      const row = await rowOf(args.id);
+      // An id of no session, also a malformed one, rejects, and names no subagent.
+      const row = await sessions.get(args.id).catch(() => undefined);
       if (row?.parent !== s.sessionId) {
         throw new Error(`The id ${args.id} names no subagent of this session.`);
       }
@@ -211,15 +212,6 @@ async function tellInterrupted(s: SessionContext): Promise<void> {
     const text = `<system_notification plugin="subagents">${lines.join("\n")}</system_notification>`;
     return { replace: { blocks: [{ kind: "userText", text }, ...event.blocks] } };
   });
-}
-
-/** The row of the session `id`, or `undefined` when no session has that id. A malformed id throws before it gives a promise. */
-async function rowOf(id: string): Promise<SessionRow | undefined> {
-  try {
-    return await sessions.get(id);
-  } catch {
-    return undefined;
-  }
 }
 
 /** The ids of the saved models with a ready provider. A broken file gives a notice and no `model` argument. */
