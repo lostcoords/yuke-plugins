@@ -94,15 +94,15 @@ class ComposerState {
 }
 
 export class ComposerEditor {
-  readonly states = new Map<TextEditor, ComposerState>();
-  removeStatus: (() => void) | undefined;
-  readonly ctx: PluginContext;
-  readonly tui: Tui;
-  readonly registers: Registers;
+  readonly #states = new Map<TextEditor, ComposerState>();
+  #removeStatus: (() => void) | undefined;
+  readonly #ctx: PluginContext;
+  readonly #tui: Tui;
+  readonly #registers: Registers;
   constructor(ctx: PluginContext, tui: Tui, registers: Registers) {
-    this.ctx = ctx;
-    this.tui = tui;
-    this.registers = registers;
+    this.#ctx = ctx;
+    this.#tui = tui;
+    this.#registers = registers;
   }
 
   bind(editor: TextEditor, signal: AbortSignal): () => void {
@@ -110,17 +110,17 @@ export class ComposerEditor {
     const state = new ComposerState(extension, signal);
     state.previousText = editor.state.text;
     state.expectedCaret = editor.caret;
-    this.states.set(editor, state);
+    this.#states.set(editor, state);
     const handleKey = (event: KeyEvent): boolean => {
-      const handled = this.onKey(editor, event);
-      this.refresh(editor, state);
+      const handled = this.#onKey(editor, event);
+      this.#refresh(editor, state);
       return handled;
     };
     let keymapEvent: KeyEvent | undefined;
     extension.addKeyHandler((event) => {
       keymapEvent = undefined;
       const stroke = strokeOf(event);
-      if (this.tui.keys.pending() !== "" && stroke !== "esc" && stroke !== "ctrl+[") {
+      if (this.#tui.keys.pending() !== "" && stroke !== "esc" && stroke !== "ctrl+[") {
         keymapEvent = event;
         return false;
       }
@@ -146,42 +146,42 @@ export class ComposerEditor {
         state.haveVisual = false;
         state.goalColumn = undefined;
         if (state.mode.startsWith("visual")) state.mode = "normal";
-        this.reset(state);
+        this.#reset(state);
       } else if (change.kind === "selection") {
-        if (state.mode === "insert" && state.base !== null) this.finish(editor, state);
+        if (state.mode === "insert" && state.base !== null) this.#finish(editor, state);
       } else {
         state.previousText = change.before.text;
         if (state.mode === "insert" && state.base === null) {
-          this.begin(editor, state, "insert", "i", "", 1);
-          state.base = this.snapshot(editor, state, change.before);
+          this.#begin(editor, state, "insert", "i", "", 1);
+          state.base = this.#snapshot(editor, state, change.before);
           state.insertOrigin = change.before.selection.head;
           state.expectedCaret = change.before.selection.head;
         }
-        for (const edit of change.changes) this.recordEdit(editor, state, edit.from, edit.to, edit.text.length);
+        for (const edit of change.changes) this.#recordEdit(editor, state, edit.from, edit.to, edit.text.length);
         if (change.changes.some((edit) => edit.spans.some((span) => span.kind === "image"))) state.last = null;
       }
       state.previousText = editor.state.text;
       state.expectedCaret = editor.caret;
-      this.refresh(editor, state);
+      this.#refresh(editor, state);
     });
     extension.addMouseHandler(() => {
       this.cancel(editor);
-      this.refresh(editor, state);
+      this.#refresh(editor, state);
       return false;
     });
     extension.addPasteHandler(() => {
-      this.reset(state);
+      this.#reset(state);
       return state.mode !== "insert";
     });
-    this.refresh(editor, state);
+    this.#refresh(editor, state);
     return () => {
-      this.states.delete(editor);
+      this.#states.delete(editor);
       extension.close();
       this.updateStatus();
     };
   }
 
-  refresh(editor: TextEditor, state: ComposerState): void {
+  #refresh(editor: TextEditor, state: ComposerState): void {
     const modeChanged = state.presentedMode !== state.mode;
     if (modeChanged) {
       state.presentedMode = state.mode;
@@ -189,8 +189,8 @@ export class ComposerEditor {
       state.extension.setAppearance({ cursorShape: state.mode === "insert" ? "bar" : "block" });
     }
     if (state.mode.startsWith("visual")) {
-      const range = { ...this.visual(editor, state) };
-      this.normalize(editor, state, range);
+      const range = { ...this.#visual(editor, state) };
+      this.#normalize(editor, state, range);
       state.extension.setDecorations([
         {
           range: { anchor: range.from, head: range.to },
@@ -203,14 +203,14 @@ export class ComposerEditor {
   }
 
   updateStatus(): void {
-    if (this.ctx.signal.aborted) return;
-    const focused = this.tui.focusedView;
-    const state = focused instanceof TextEditor ? this.states.get(focused) : undefined;
+    if (this.#ctx.signal.aborted) return;
+    const focused = this.#tui.focusedView;
+    const state = focused instanceof TextEditor ? this.#states.get(focused) : undefined;
     if (state === undefined) {
-      this.removeStatus?.();
-      this.removeStatus = undefined;
+      this.#removeStatus?.();
+      this.#removeStatus = undefined;
     } else
-      this.removeStatus = this.tui.status.set("mode", {
+      this.#removeStatus = this.#tui.status.set("mode", {
         text: state.mode.replace("-", " ").toUpperCase(),
         side: "left",
         order: 0,
@@ -218,29 +218,29 @@ export class ComposerEditor {
       });
   }
 
-  insertText(editor: TextEditor, text: string): void {
+  #insertText(editor: TextEditor, text: string): void {
     const selection = editor.selection;
     editor.replace(Math.min(selection.anchor, selection.head), Math.max(selection.anchor, selection.head), text);
   }
 
-  recordEdit(editor: TextEditor, state: ComposerState, from: number, to: number, length: number) {
+  #recordEdit(editor: TextEditor, state: ComposerState, from: number, to: number, length: number) {
     if (state.mode === "insert") {
       if (state.base && from !== state.expectedCaret && to !== state.expectedCaret) {
-        this.finish(editor, state, state.previousText);
+        this.#finish(editor, state, state.previousText);
       }
-      if (!state.base) this.beginAfter(editor, state, from);
+      if (!state.base) this.#beginAfter(editor, state, from);
       if (state.record && !state.replaying) {
         if (!state.record.edits.length && from >= state.editFrom && to <= state.editNewTo && state.editFrom >= 0)
           state.editNewTo += length - (to - from);
-        else this.recordOutside(state.previousText, state, from, to, editor.state.text.slice(from, from + length));
+        else this.#recordOutside(state.previousText, state, from, to, editor.state.text.slice(from, from + length));
       }
     }
     if (state.marks || state.haveVisual)
-      this.shiftMarks(state, state.previousText, from, to, editor.state.text.slice(from, from + length));
+      this.#shiftMarks(state, state.previousText, from, to, editor.state.text.slice(from, from + length));
   }
 
-  beginAfter(editor: TextEditor, state: ComposerState, from: number) {
-    this.begin(editor, state, "insert", "i", "", 1);
+  #beginAfter(editor: TextEditor, state: ComposerState, from: number) {
+    this.#begin(editor, state, "insert", "i", "", 1);
     if (state.base) {
       state.base.text = state.previousText;
       state.base.caret = from;
@@ -248,7 +248,7 @@ export class ComposerEditor {
     state.insertOrigin = from;
   }
 
-  recordOutside(previousText: string, state: ComposerState, from: number, to: number, value: string) {
+  #recordOutside(previousText: string, state: ComposerState, from: number, to: number, value: string) {
     const recipe = state.record;
     if (!recipe) return;
     if (recipe.edits.length) {
@@ -280,12 +280,12 @@ export class ComposerEditor {
     state.editNewTo = state.editOldTo + delta + value.length - (to - from);
   }
 
-  deleteInsertWord(editor: TextEditor) {
-    const state = this.states.get(editor);
+  #deleteInsertWord(editor: TextEditor) {
+    const state = this.#states.get(editor);
     if (state === undefined) return;
-    const text = editor.state.text,
-      to = editor.caret,
-      start = lineStart(text, to);
+    const text = editor.state.text;
+    const to = editor.caret;
+    const start = lineStart(text, to);
     if (to === 0) return;
     let from = state.navigation.previous(text, to);
     if (to > start) {
@@ -295,14 +295,14 @@ export class ComposerEditor {
         from = state.navigation.previous(text, from);
     }
     editor.replace(from, to, "");
-    this.reset(state);
+    this.#reset(state);
   }
 
-  mode(editor: TextEditor | null) {
-    return editor ? this.states.get(editor)?.mode || "insert" : "";
+  #mode(editor: TextEditor | null) {
+    return editor ? this.#states.get(editor)?.mode || "insert" : "";
   }
 
-  reset(state: ComposerState) {
+  #reset(state: ComposerState) {
     state.phase = "ready";
     state.prefix = "";
     state.operator = "";
@@ -312,17 +312,17 @@ export class ComposerEditor {
   }
 
   cancel(editor: TextEditor) {
-    const state = this.states.get(editor);
+    const state = this.#states.get(editor);
     if (!state) return;
     if (state.mode.startsWith("visual")) {
-      this.rememberVisual(editor, state);
+      this.#rememberVisual(editor, state);
       state.mode = "normal";
     }
-    if (state.mode === "insert") this.finish(editor, state);
-    this.reset(state);
+    if (state.mode === "insert") this.#finish(editor, state);
+    this.#reset(state);
   }
 
-  snapshot(editor: TextEditor, state: ComposerState, source: EditorState = editor.state): Snapshot {
+  #snapshot(editor: TextEditor, state: ComposerState, source: EditorState = editor.state): Snapshot {
     const visual = state.mode.startsWith("visual");
     return {
       text: source.text,
@@ -337,7 +337,7 @@ export class ComposerEditor {
     };
   }
 
-  push(history: Snapshot[], value: Snapshot) {
+  #push(history: Snapshot[], value: Snapshot) {
     history.push(value);
     let characters = 0;
     for (let index = history.length - 1; index >= 0; index--) {
@@ -349,7 +349,7 @@ export class ComposerEditor {
     }
   }
 
-  begin(
+  #begin(
     editor: TextEditor,
     state: ComposerState,
     kind: string,
@@ -358,8 +358,8 @@ export class ComposerEditor {
     count: number,
     glyph: string = "",
   ) {
-    this.finish(editor, state);
-    state.base = this.snapshot(editor, state);
+    this.#finish(editor, state);
+    state.base = this.#snapshot(editor, state);
     state.record = {
       kind,
       motion,
@@ -376,7 +376,7 @@ export class ComposerEditor {
     state.editFrom = -1;
   }
 
-  captureInsert(editor: TextEditor, state: ComposerState, text: string = editor.state.text) {
+  #captureInsert(editor: TextEditor, state: ComposerState, text: string = editor.state.text) {
     if (state.record && !state.record.edits.length && state.editFrom >= 0)
       state.record.edits.push(
         state.editFrom - state.insertOrigin,
@@ -385,11 +385,11 @@ export class ComposerEditor {
       );
   }
 
-  finish(editor: TextEditor, state: ComposerState, text: string = editor.state.text) {
+  #finish(editor: TextEditor, state: ComposerState, text: string = editor.state.text) {
     if (!state.base) return;
-    this.captureInsert(editor, state, text);
+    this.#captureInsert(editor, state, text);
     if (state.base.text !== text || JSON.stringify(state.base.spans) !== JSON.stringify(editor.state.spans)) {
-      this.push(state.undo, state.base);
+      this.#push(state.undo, state.base);
       state.redo.length = 0;
       if (!state.replaying)
         state.last =
@@ -400,24 +400,24 @@ export class ComposerEditor {
     state.editFrom = -1;
   }
 
-  finishInsert(editor: TextEditor, state: ComposerState, leaveInsert: boolean) {
-    this.captureInsert(editor, state);
+  #finishInsert(editor: TextEditor, state: ComposerState, leaveInsert: boolean) {
+    this.#captureInsert(editor, state);
     if (leaveInsert && state.record && state.insertCount > 1 && state.record.edits.length) {
       const recipe = state.record;
       state.replaying = true;
       for (let index = 1; index < state.insertCount; index++) {
-        if (recipe.motion === "o" || recipe.motion === "O") this.insertText(editor, "\n");
-        this.replayInsert(editor, state, recipe);
+        if (recipe.motion === "o" || recipe.motion === "O") this.#insertText(editor, "\n");
+        this.#replayInsert(editor, state, recipe);
       }
       state.replaying = false;
     }
-    this.finish(editor, state);
+    this.#finish(editor, state);
     if (leaveInsert && editor.caret > lineStart(editor.state.text, editor.caret))
       editor.caret = state.navigation.previous(editor.state.text, editor.caret);
     state.insertCount = 1;
   }
 
-  restore(editor: TextEditor, state: ComposerState, value: Snapshot): void {
+  #restore(editor: TextEditor, state: ComposerState, value: Snapshot): void {
     state.muted = true;
     try {
       const caret = state.navigation.clamp(value.text, value.caret);
@@ -433,23 +433,23 @@ export class ComposerEditor {
       state.muted = false;
     }
   }
-  history(editor: TextEditor, state: ComposerState, redo: boolean, count: number) {
-    this.finish(editor, state);
-    const from = redo ? state.redo : state.undo,
-      to = redo ? state.undo : state.redo;
+  #history(editor: TextEditor, state: ComposerState, redo: boolean, count: number) {
+    this.#finish(editor, state);
+    const from = redo ? state.redo : state.undo;
+    const to = redo ? state.undo : state.redo;
     for (let step = 0; step < count && from.length; step++) {
       const own = from.pop() as Snapshot;
-      const current = this.snapshot(editor, state);
+      const current = this.#snapshot(editor, state);
       current.caret = own.caret;
-      this.push(to, current);
-      this.restore(editor, state, own);
+      this.#push(to, current);
+      this.#restore(editor, state, own);
     }
   }
 
-  shiftMarks(state: ComposerState, text: string, from: number, to: number, value: string) {
-    const delta = value.length - (to - from),
-      start = lineStart(text, from),
-      end = lineEnd(text, from);
+  #shiftMarks(state: ComposerState, text: string, from: number, to: number, value: string) {
+    const delta = value.length - (to - from);
+    const start = lineStart(text, from);
+    const end = lineEnd(text, from);
     const shift = (at: number): number => {
       if (lineStart(text, at) === start && to <= end && !value.includes("\n")) return Math.min(at, end + delta);
       if (at >= to) return at + delta;
@@ -466,14 +466,14 @@ export class ComposerEditor {
     }
   }
 
-  lines(editor: TextEditor, state: ComposerState, count: number) {
-    const text = editor.state.text,
-      range = state.range;
+  #lines(editor: TextEditor, state: ComposerState, count: number) {
+    const text = editor.state.text;
+    const range = state.range;
     range.from = lineStart(text, editor.caret);
     range.to = range.from;
     for (let step = 0; step < count; step++) {
-      const end = lineEnd(text, range.to),
-        next = afterLine(text, end);
+      const end = lineEnd(text, range.to);
+      const next = afterLine(text, end);
       range.to = end;
       if (next === text.length || step + 1 === count) break;
       range.to = next;
@@ -484,7 +484,7 @@ export class ComposerEditor {
     return range;
   }
 
-  motion(
+  #motion(
     editor: TextEditor,
     state: ComposerState,
     motion: string,
@@ -492,13 +492,13 @@ export class ComposerEditor {
     glyph: string = "",
     counted: boolean = false,
   ) {
-    const text = editor.state.text,
-      at = editor.caret,
-      navigation = state.navigation,
-      range = state.range;
-    let target = at,
-      inclusive = false,
-      lines = false;
+    const text = editor.state.text;
+    const at = editor.caret;
+    const navigation = state.navigation;
+    const range = state.range;
+    let target = at;
+    let inclusive = false;
+    let lines = false;
     switch (motion) {
       case "h":
       case "left":
@@ -632,15 +632,15 @@ export class ComposerEditor {
       }
       case "n":
       case "N":
-        target = this.search(text, at, state, motion === "n" ? state.searchForward : !state.searchForward, count);
+        target = this.#search(text, at, state, motion === "n" ? state.searchForward : !state.searchForward, count);
         if (target < 0) return null;
         break;
       case "*":
       case "#":
       case "g*":
       case "g#": {
-        let position = at,
-          end = lineEnd(text, at);
+        let position = at;
+        const end = lineEnd(text, at);
         while (position < end && navigation.wordClass(text, position) < 2) position = navigation.next(text, position);
         if (position === end) return null;
         const object = navigation.wordObject(text, position, false, 1, false);
@@ -648,7 +648,7 @@ export class ComposerEditor {
         state.query = text.slice(object.from, object.to);
         state.searchForward = motion.includes("*");
         state.searchWhole = motion.length === 1;
-        target = this.search(text, at, state, state.searchForward, count);
+        target = this.#search(text, at, state, state.searchForward, count);
         if (target < 0) return null;
         break;
       }
@@ -665,11 +665,11 @@ export class ComposerEditor {
     return range;
   }
 
-  search(text: string, at: number, state: ComposerState, forward: boolean, count: number) {
+  #search(text: string, at: number, state: ComposerState, forward: boolean, count: number) {
     if (!state.query) return -1;
     for (let step = 0; step < count; step++) {
-      let position = at,
-        remaining = text.length + 1;
+      let position = at;
+      let remaining = text.length + 1;
       for (;;) {
         position = forward
           ? text.indexOf(state.query, position + 1)
@@ -693,7 +693,7 @@ export class ComposerEditor {
     return at;
   }
 
-  normalize(editor: TextEditor, state: ComposerState, range: MotionRange, exact: boolean = false) {
+  #normalize(editor: TextEditor, state: ComposerState, range: MotionRange, exact: boolean = false) {
     const text = editor.state.text;
     if (range.lines) {
       range.from = lineStart(text, range.from);
@@ -714,7 +714,7 @@ export class ComposerEditor {
     }
   }
 
-  operate(
+  #operate(
     editor: TextEditor,
     state: ComposerState,
     range: MotionRange,
@@ -722,9 +722,9 @@ export class ComposerEditor {
     units: number = 1,
     exact: boolean = false,
   ) {
-    this.normalize(editor, state, range, exact);
-    let from = range.from,
-      to = range.to;
+    this.#normalize(editor, state, range, exact);
+    let from = range.from;
+    let to = range.to;
     const text = editor.state.text;
     if (
       operator === "d" &&
@@ -744,11 +744,11 @@ export class ComposerEditor {
     let value = text.slice(from, to);
     if (operator === "y" || operator === "d" || operator === "c") {
       if (range.lines && value.endsWith("\n")) value = value.slice(0, value.endsWith("\r\n") ? -2 : -1);
-      this.registers.save(value, range.lines, operator, state.register);
+      this.#registers.save(value, range.lines, operator, state.register);
     }
     if (operator === "y") {
       editor.caret = state.navigation.clamp(text, from);
-      if (state.register !== "_") this.tui.clipboard.writeText(value);
+      if (state.register !== "_") this.#tui.clipboard.writeText(value);
       return;
     }
     if (operator === "d" || operator === "c") {
@@ -773,8 +773,8 @@ export class ComposerEditor {
       let replacement = value;
       if (operator === "gu") replacement = value.toLowerCase();
       else if (operator === "gU") replacement = value.toUpperCase();
-      else if (operator === "g~") replacement = this.toggle(value, state.navigation);
-      else replacement = this.shift(value, operator === ">", units);
+      else if (operator === "g~") replacement = this.#toggle(value, state.navigation);
+      else replacement = this.#shift(value, operator === ">", units);
       editor.replace(from, to, replacement);
       editor.caret = state.navigation.clamp(editor.state.text, state.navigation.snap(editor.state.text, from));
       if (operator === ">" || operator === "<")
@@ -783,25 +783,25 @@ export class ComposerEditor {
     state.goalColumn = undefined;
   }
 
-  toggle(value: string, navigation: Navigation) {
+  #toggle(value: string, navigation: Navigation) {
     let result = "";
     for (let at = 0; at < value.length; ) {
-      const next = navigation.next(value, at),
-        glyph = value.slice(at, next),
-        lower = glyph.toLowerCase();
+      const next = navigation.next(value, at);
+      const glyph = value.slice(at, next);
+      const lower = glyph.toLowerCase();
       result += glyph === lower ? glyph.toUpperCase() : lower;
       at = next;
     }
     return result;
   }
 
-  shift(value: string, right: boolean, count: number) {
+  #shift(value: string, right: boolean, count: number) {
     const rows = value.split("\n");
     for (let index = 0; index < rows.length; index++) {
       const row = rows[index] as string;
       if (!row.length) continue;
-      let at = 0,
-        column = 0;
+      let at = 0;
+      let column = 0;
       while (at < row.length && (row[at] === " " || row[at] === "\t")) {
         column += row[at] === "\t" ? 2 - (column % 2) : 1;
         at++;
@@ -811,7 +811,7 @@ export class ComposerEditor {
     return rows.join("\n");
   }
 
-  visual(editor: TextEditor, state: ComposerState) {
+  #visual(editor: TextEditor, state: ComposerState) {
     const range = state.range;
     range.from = Math.min(state.anchor, editor.caret);
     range.to = Math.max(state.anchor, editor.caret);
@@ -821,14 +821,14 @@ export class ComposerEditor {
     return range;
   }
 
-  rememberVisual(editor: TextEditor, state: ComposerState) {
+  #rememberVisual(editor: TextEditor, state: ComposerState) {
     state.visualFrom = state.anchor;
     state.visualTo = editor.caret;
     state.visualLines = state.mode === "visual-line";
     state.haveVisual = true;
   }
 
-  complete(
+  #complete(
     editor: TextEditor,
     state: ComposerState,
     motion: string,
@@ -837,20 +837,20 @@ export class ComposerEditor {
     counted: boolean = false,
   ) {
     state.navigation.failureTarget = -1;
-    const operator = state.operator,
-      range =
-        motion === "line"
-          ? this.lines(editor, state, count)
-          : this.motion(editor, state, motion, count, glyph, counted);
+    const operator = state.operator;
+    const range =
+      motion === "line"
+        ? this.#lines(editor, state, count)
+        : this.#motion(editor, state, motion, count, glyph, counted);
     if (!range) {
       if (state.navigation.failureTarget >= 0) editor.caret = state.navigation.failureTarget;
-      this.reset(state);
+      this.#reset(state);
       return;
     }
     if (operator) {
-      if (operator !== "y") this.begin(editor, state, "operator", motion, operator, count, glyph);
-      this.operate(editor, state, range, operator, 1, motion.length === 2 && (motion[0] === "i" || motion[0] === "a"));
-      if (this.mode(editor) !== "insert") this.finish(editor, state);
+      if (operator !== "y") this.#begin(editor, state, "operator", motion, operator, count, glyph);
+      this.#operate(editor, state, range, operator, 1, motion.length === 2 && (motion[0] === "i" || motion[0] === "a"));
+      if (this.#mode(editor) !== "insert") this.#finish(editor, state);
     } else {
       if (state.mode.startsWith("visual") && motion.length === 2 && (motion[0] === "i" || motion[0] === "a")) {
         state.anchor = range.from;
@@ -859,11 +859,11 @@ export class ComposerEditor {
       } else editor.caret = state.navigation.clamp(editor.state.text, range.target);
       if (!VERTICAL.has(motion)) state.goalColumn = undefined;
     }
-    this.reset(state);
+    this.#reset(state);
   }
 
-  insert(editor: TextEditor, state: ComposerState, key: string, count: number) {
-    this.begin(editor, state, "insert", key, "", count);
+  #insert(editor: TextEditor, state: ComposerState, key: string, count: number) {
+    this.#begin(editor, state, "insert", key, "", count);
     const end = lineEnd(editor.state.text, editor.caret);
     if (key === "a") editor.caret = Math.min(end, state.navigation.next(editor.state.text, editor.caret));
     else if (key === "I") editor.caret = firstNonblank(editor.state.text, editor.caret);
@@ -877,11 +877,11 @@ export class ComposerEditor {
     state.expectedCaret = editor.caret;
     state.insertCount = count;
     state.mode = "insert";
-    this.reset(state);
-    this.refresh(editor, state);
+    this.#reset(state);
+    this.#refresh(editor, state);
   }
 
-  replayInsert(editor: TextEditor, state: ComposerState, recipe: Recipe) {
+  #replayInsert(editor: TextEditor, state: ComposerState, recipe: Recipe) {
     const origin = editor.caret;
     for (let index = 0; index < recipe.edits.length; index += 3) {
       const from = state.navigation.snap(
@@ -897,19 +897,19 @@ export class ComposerEditor {
     }
   }
 
-  put(editor: TextEditor, state: ComposerState, key: string, count: number) {
-    const entry = this.registers.read(state.register);
+  #put(editor: TextEditor, state: ComposerState, key: string, count: number) {
+    const entry = this.#registers.read(state.register);
     if (!entry || (!entry.text && !entry.linewise)) return;
-    const storedText = entry.text,
-      storedLines = entry.linewise;
-    this.begin(editor, state, "put", key, "", count);
+    const storedText = entry.text;
+    const storedLines = entry.linewise;
+    this.#begin(editor, state, "put", key, "", count);
     const after = key === "p";
     if (state.mode.startsWith("visual")) {
-      const range = this.visual(editor, state);
-      this.normalize(editor, state, range);
-      const from = range.from,
-        to = range.to,
-        lines = range.lines;
+      const range = this.#visual(editor, state);
+      this.#normalize(editor, state, range);
+      const from = range.from;
+      const to = range.to;
+      const lines = range.lines;
       const value = storedLines
         ? (lines ? "" : "\n") +
           Array(count).fill(storedText).join("\n") +
@@ -923,8 +923,8 @@ export class ComposerEditor {
           : state.navigation.distance(editor.state.text, from, to);
         state.record.lines = lines;
       }
-      this.rememberVisual(editor, state);
-      if (key === "p") this.registers.save(lines && old.endsWith("\n") ? old.slice(0, -1) : old, lines, "d");
+      this.#rememberVisual(editor, state);
+      if (key === "p") this.#registers.save(lines && old.endsWith("\n") ? old.slice(0, -1) : old, lines, "d");
       editor.replace(from, to, value);
       editor.caret = state.navigation.clamp(
         editor.state.text,
@@ -956,17 +956,17 @@ export class ComposerEditor {
           : state.navigation.previous(editor.state.text, state.navigation.snap(editor.state.text, at + value.length)),
       );
     }
-    this.finish(editor, state);
-    this.reset(state);
+    this.#finish(editor, state);
+    this.#reset(state);
   }
 
-  replace(editor: TextEditor, state: ComposerState, glyph: string, count: number) {
-    let from = editor.caret,
-      to = from;
+  #replace(editor: TextEditor, state: ComposerState, glyph: string, count: number) {
+    let from = editor.caret;
+    let to = from;
     const visual = state.mode.startsWith("visual");
     if (visual) {
-      const range = this.visual(editor, state);
-      this.normalize(editor, state, range);
+      const range = this.#visual(editor, state);
+      this.#normalize(editor, state, range);
       from = range.from;
       to = range.to;
     } else {
@@ -976,9 +976,9 @@ export class ComposerEditor {
         to = state.navigation.next(editor.state.text, to);
       }
     }
-    this.begin(editor, state, "replace", "r", "", count, glyph);
+    this.#begin(editor, state, "replace", "r", "", count, glyph);
     if (visual) {
-      this.rememberVisual(editor, state);
+      this.#rememberVisual(editor, state);
       state.mode = "normal";
     }
     let value = "";
@@ -994,29 +994,29 @@ export class ComposerEditor {
         visual ? from : glyph === "\n" ? from + 1 : state.navigation.previous(editor.state.text, from + value.length),
       ),
     );
-    this.finish(editor, state);
+    this.#finish(editor, state);
   }
 
-  join(editor: TextEditor, state: ComposerState, key: string, count: number) {
+  #join(editor: TextEditor, state: ComposerState, key: string, count: number) {
     const text = editor.state.text;
-    let from = lineStart(text, editor.caret),
-      to = lineEnd(text, from),
-      caret = to,
-      value = text.slice(from, to);
+    let from = lineStart(text, editor.caret);
+    let to = lineEnd(text, from);
+    let caret = to;
+    let value = text.slice(from, to);
     if (state.mode.startsWith("visual")) {
-      const range = this.visual(editor, state);
+      const range = this.#visual(editor, state);
       count = text.slice(range.from, range.to).split("\n").length;
       from = lineStart(text, range.from);
       to = lineEnd(text, from);
       value = text.slice(from, to);
-      this.rememberVisual(editor, state);
+      this.#rememberVisual(editor, state);
       state.mode = "normal";
     }
     if (to === text.length) return;
-    this.begin(editor, state, "join", key, "", count);
+    this.#begin(editor, state, "join", key, "", count);
     for (let step = 1; step < Math.max(2, count) && to < text.length; step++) {
-      const start = afterLine(text, to),
-        end = lineEnd(text, start);
+      const start = afterLine(text, to);
+      const end = lineEnd(text, start);
       let body = text.slice(start, end);
       if (key === "J") body = body.replace(/^[ \t]+/, "");
       caret = from + value.length;
@@ -1026,12 +1026,12 @@ export class ComposerEditor {
     }
     editor.replace(from, to, value);
     editor.caret = state.navigation.clamp(editor.state.text, state.navigation.snap(editor.state.text, caret));
-    this.finish(editor, state);
+    this.#finish(editor, state);
   }
 
-  simple(editor: TextEditor, state: ComposerState, key: string, count: number) {
+  #simple(editor: TextEditor, state: ComposerState, key: string, count: number) {
     if (key === "J" || key === "gJ") {
-      this.join(editor, state, key, count);
+      this.#join(editor, state, key, count);
       return;
     }
     if (key === "~") {
@@ -1043,16 +1043,16 @@ export class ComposerEditor {
       range.lines = false;
       range.inclusive = false;
       const destination = range.to;
-      this.begin(editor, state, "simple", key, "", count);
-      this.operate(editor, state, range, "g~");
+      this.#begin(editor, state, "simple", key, "", count);
+      this.#operate(editor, state, range, "g~");
       editor.caret = state.navigation.clamp(editor.state.text, destination);
-      this.finish(editor, state);
+      this.#finish(editor, state);
       return;
     }
     const operator = key === "s" || key === "S" || key === "C" ? "c" : key === "Y" ? "y" : "d";
     state.operator = operator;
-    if (key === "S" || key === "Y") this.complete(editor, state, "line", count);
-    else this.complete(editor, state, key === "D" || key === "C" ? "$" : key === "X" ? "h" : "l", count);
+    if (key === "S" || key === "Y") this.#complete(editor, state, "line", count);
+    else this.#complete(editor, state, key === "D" || key === "C" ? "$" : key === "X" ? "h" : "l", count);
     if (state.last && !state.base && operator !== "y") {
       state.last.kind = "simple";
       state.last.motion = key;
@@ -1063,7 +1063,7 @@ export class ComposerEditor {
     }
   }
 
-  repeat(editor: TextEditor, state: ComposerState, count: number, counted: boolean) {
+  #repeat(editor: TextEditor, state: ComposerState, count: number, counted: boolean) {
     const last = state.last;
     if (!last) return;
     const step = counted ? count : last.count;
@@ -1071,11 +1071,11 @@ export class ComposerEditor {
     state.replaying = true;
     if (last.kind === "operator") {
       state.operator = last.operator;
-      this.complete(editor, state, last.motion, step, last.glyph, true);
-    } else if (last.kind === "simple") this.simple(editor, state, last.motion, step);
+      this.#complete(editor, state, last.motion, step, last.glyph, true);
+    } else if (last.kind === "simple") this.#simple(editor, state, last.motion, step);
     else if (last.kind === "visual-put") {
-      this.begin(editor, state, "visual-put", last.motion, "d", step);
-      const range = last.lines ? this.lines(editor, state, last.width) : state.range;
+      this.#begin(editor, state, "visual-put", last.motion, "d", step);
+      const range = last.lines ? this.#lines(editor, state, last.width) : state.range;
       if (!last.lines) {
         range.from = editor.caret;
         range.to = range.from;
@@ -1084,11 +1084,11 @@ export class ComposerEditor {
         range.lines = false;
         range.inclusive = false;
       }
-      this.operate(editor, state, range, "d", 1, true);
-      this.finish(editor, state);
-    } else if (last.kind === "put") this.put(editor, state, last.motion, step);
-    else if (last.kind === "replace") this.replace(editor, state, last.glyph, step);
-    else if (last.kind === "join") this.join(editor, state, last.motion, step);
+      this.#operate(editor, state, range, "d", 1, true);
+      this.#finish(editor, state);
+    } else if (last.kind === "put") this.#put(editor, state, last.motion, step);
+    else if (last.kind === "replace") this.#replace(editor, state, last.glyph, step);
+    else if (last.kind === "join") this.#join(editor, state, last.motion, step);
     else if (last.kind === "visual") {
       state.mode = last.lines ? "visual-line" : "visual";
       state.anchor = editor.caret;
@@ -1097,42 +1097,42 @@ export class ComposerEditor {
           ? afterLine(editor.state.text, lineEnd(editor.state.text, editor.caret))
           : state.navigation.next(editor.state.text, editor.caret);
       editor.caret = state.navigation.clamp(editor.state.text, editor.caret);
-      this.visualOperate(editor, state, last.operator, step);
-    } else this.insert(editor, state, last.motion, step);
+      this.#visualOperate(editor, state, last.operator, step);
+    } else this.#insert(editor, state, last.motion, step);
     if (state.mode === "insert") {
       for (let index = 0; index < (last.kind === "insert" ? step : 1); index++) {
-        if (index && (last.motion === "o" || last.motion === "O")) this.insertText(editor, "\n");
-        this.replayInsert(editor, state, last);
+        if (index && (last.motion === "o" || last.motion === "O")) this.#insertText(editor, "\n");
+        this.#replayInsert(editor, state, last);
       }
       state.insertCount = 1;
-      this.finishInsert(editor, state, true);
+      this.#finishInsert(editor, state, true);
       state.mode = "normal";
     }
     state.replaying = false;
     state.last = last;
-    this.reset(state);
+    this.#reset(state);
   }
 
-  visualOperate(editor: TextEditor, state: ComposerState, operator: string, count: number) {
-    const range = this.visual(editor, state),
-      lines = range.lines,
-      width = lines
-        ? editor.state.text.slice(range.from, range.to).split("\n").length - 1
-        : state.navigation.distance(editor.state.text, range.from, range.to);
-    if (operator !== "y") this.begin(editor, state, "visual", "", operator, count);
+  #visualOperate(editor: TextEditor, state: ComposerState, operator: string, count: number) {
+    const range = this.#visual(editor, state);
+    const lines = range.lines;
+    const width = lines
+      ? editor.state.text.slice(range.from, range.to).split("\n").length - 1
+      : state.navigation.distance(editor.state.text, range.from, range.to);
+    if (operator !== "y") this.#begin(editor, state, "visual", "", operator, count);
     if (state.record) {
       state.record.width = width;
       state.record.lines = lines;
     }
-    this.rememberVisual(editor, state);
+    this.#rememberVisual(editor, state);
     state.mode = "normal";
-    this.operate(editor, state, range, operator, count);
-    if (this.mode(editor) !== "insert") this.finish(editor, state);
-    this.reset(state);
+    this.#operate(editor, state, range, operator, count);
+    if (this.#mode(editor) !== "insert") this.#finish(editor, state);
+    this.#reset(state);
   }
 
-  onKey(editor: TextEditor, event: KeyEvent) {
-    const state = this.states.get(editor);
+  #onKey(editor: TextEditor, event: KeyEvent) {
+    const state = this.#states.get(editor);
     if (state === undefined) return false;
     const normalized = strokeOf(event);
     const stroke = normalized === "space" ? " " : normalized;
@@ -1147,15 +1147,15 @@ export class ComposerEditor {
       return false;
     if (stroke === "esc" || stroke === "ctrl+[") {
       if (state.mode === "insert") {
-        this.finishInsert(editor, state, true);
+        this.#finishInsert(editor, state, true);
         state.mode = "normal";
         editor.caret = state.navigation.clamp(editor.state.text, editor.caret);
       } else if (state.mode.startsWith("visual")) {
-        this.rememberVisual(editor, state);
+        this.#rememberVisual(editor, state);
         state.mode = "normal";
       }
-      this.reset(state);
-      this.refresh(editor, state);
+      this.#reset(state);
+      this.#refresh(editor, state);
       return true;
     }
     if (
@@ -1165,7 +1165,7 @@ export class ComposerEditor {
         stroke !== "alt+/" &&
         !(state.mode === "insert" && stroke === "ctrl+w"))
     ) {
-      this.reset(state);
+      this.#reset(state);
       return false;
     }
     if (state.phase === "register" || state.phase === "insert-register") {
@@ -1173,15 +1173,15 @@ export class ComposerEditor {
       state.phase = "ready";
       if (REGISTER_NAME.test(stroke)) {
         if (insert) {
-          const entry = this.registers.read(stroke);
-          if (entry) this.insertText(editor, entry.text + (entry.linewise ? "\n" : ""));
+          const entry = this.#registers.read(stroke);
+          if (entry) this.#insertText(editor, entry.text + (entry.linewise ? "\n" : ""));
         } else state.register = stroke;
-      } else this.reset(state);
+      } else this.#reset(state);
       return true;
     }
     if (state.mode === "insert") {
       if (stroke === "ctrl+w") {
-        this.deleteInsertWord(editor);
+        this.#deleteInsertWord(editor);
         return true;
       }
       if (stroke === "ctrl+r") {
@@ -1197,29 +1197,29 @@ export class ComposerEditor {
       !state.count &&
       (stroke === "w" || stroke === "b" || stroke === "e" || stroke === "W" || stroke === "B" || stroke === "E")
     ) {
-      this.moveWord(editor, state, stroke);
+      this.#moveWord(editor, state, stroke);
       return true;
     }
     if (MODIFIED.test(stroke)) {
       if (stroke === "ctrl+r") {
-        this.history(editor, state, true, state.count || state.leading || 1);
-        this.reset(state);
+        this.#history(editor, state, true, state.count || state.leading || 1);
+        this.#reset(state);
         return true;
       }
       if (stroke === "alt+/") {
-        this.openSearch(editor, state);
+        this.#openSearch(editor, state);
         return true;
       }
-      this.reset(state);
+      this.#reset(state);
       return false;
     }
-    const handled = this.parse(editor, state, stroke);
+    const handled = this.#parse(editor, state, stroke);
     return handled;
   }
 
-  moveWord(editor: TextEditor, state: ComposerState, stroke: string) {
-    const text = editor.state.text,
-      at = editor.caret;
+  #moveWord(editor: TextEditor, state: ComposerState, stroke: string) {
+    const text = editor.state.text;
+    const at = editor.caret;
     editor.caret = state.navigation.clamp(
       text,
       stroke === "w" || stroke === "W"
@@ -1231,21 +1231,21 @@ export class ComposerEditor {
     state.goalColumn = undefined;
   }
 
-  parse(editor: TextEditor, state: ComposerState, stroke: string) {
-    const counted = !!(state.leading || state.count),
-      count = (state.leading || 1) * (state.count || 1);
+  #parse(editor: TextEditor, state: ComposerState, stroke: string) {
+    const counted = !!(state.leading || state.count);
+    const count = (state.leading || 1) * (state.count || 1);
     if (state.phase === "character") {
       const kind = state.prefix;
       if (stroke === "enter" && kind === "r") {
-        this.replace(editor, state, "\n", count);
-        this.reset(state);
+        this.#replace(editor, state, "\n", count);
+        this.#reset(state);
         return true;
       }
       if (stroke && state.navigation.next(stroke, 0) === stroke.length) {
-        if (kind === "r") this.replace(editor, state, stroke, count);
-        else this.complete(editor, state, kind, count, stroke, counted);
+        if (kind === "r") this.#replace(editor, state, stroke, count);
+        else this.#complete(editor, state, kind, count, stroke, counted);
       }
-      this.reset(state);
+      this.#reset(state);
       return true;
     }
     if (state.phase === "mark") {
@@ -1253,13 +1253,13 @@ export class ComposerEditor {
         if (state.prefix === "m") {
           if (!state.marks) state.marks = new Map();
           state.marks.set(stroke, editor.caret);
-        } else this.complete(editor, state, state.prefix, count, stroke, counted);
+        } else this.#complete(editor, state, state.prefix, count, stroke, counted);
       }
-      this.reset(state);
+      this.#reset(state);
       return true;
     }
     if (state.phase === "text-object") {
-      this.complete(editor, state, state.prefix + stroke, count, "", counted);
+      this.#complete(editor, state, state.prefix + stroke, count, "", counted);
       return true;
     }
     if (state.phase === "prefix") {
@@ -1279,15 +1279,15 @@ export class ComposerEditor {
           editor.state.text,
           state.navigation.snap(editor.state.text, Math.min(state.visualTo, editor.state.text.length)),
         );
-        this.reset(state);
+        this.#reset(state);
         return true;
       }
       if (prefix === "g" && stroke === "J" && !state.operator) {
-        this.join(editor, state, "gJ", count);
-        this.reset(state);
+        this.#join(editor, state, "gJ", count);
+        this.#reset(state);
         return true;
       }
-      this.complete(editor, state, prefix + stroke, count, "", counted);
+      this.#complete(editor, state, prefix + stroke, count, "", counted);
       return true;
     }
     if (stroke === "backspace") stroke = "h";
@@ -1295,8 +1295,8 @@ export class ComposerEditor {
     if (stroke.length === 1 && stroke >= "0" && stroke <= "9" && (stroke !== "0" || state.count > 0)) {
       state.count = state.count * 10 + Number(stroke);
       if ((state.leading || 1) * state.count > MAX_COUNT) {
-        this.reset(state);
-        this.ctx.notify("warn", "Vim count exceeds 10000");
+        this.#reset(state);
+        this.#ctx.notify("warn", "Vim count exceeds 10000");
       }
       return true;
     }
@@ -1330,7 +1330,7 @@ export class ComposerEditor {
         (state.operator === "gu" && stroke === "u") ||
         (state.operator === "gU" && stroke === "U") ||
         (state.operator === "g~" && stroke === "~");
-      this.complete(editor, state, doubled ? "line" : stroke, count, "", counted);
+      this.#complete(editor, state, doubled ? "line" : stroke, count, "", counted);
       return true;
     }
     if (state.mode.startsWith("visual")) {
@@ -1338,7 +1338,7 @@ export class ComposerEditor {
         const old = state.anchor;
         state.anchor = editor.caret;
         editor.caret = old;
-        this.reset(state);
+        this.#reset(state);
         return true;
       }
       if (stroke === "i" || stroke === "a") {
@@ -1357,7 +1357,7 @@ export class ComposerEditor {
         stroke === ">" ||
         stroke === "<"
       ) {
-        this.visualOperate(
+        this.#visualOperate(
           editor,
           state,
           stroke === "x" ? "d" : stroke === "u" ? "gu" : stroke === "U" ? "gU" : stroke === "~" ? "g~" : stroke,
@@ -1369,13 +1369,13 @@ export class ComposerEditor {
     if (stroke === "v" || stroke === "V") {
       const next = stroke === "v" ? "visual" : "visual-line";
       if (state.mode === next) {
-        this.rememberVisual(editor, state);
+        this.#rememberVisual(editor, state);
         state.mode = "normal";
       } else {
         if (!state.mode.startsWith("visual")) state.anchor = editor.caret;
         state.mode = next;
       }
-      this.reset(state);
+      this.#reset(state);
       return true;
     }
     if (stroke === "d" || stroke === "c" || stroke === "y" || stroke === ">" || stroke === "<") {
@@ -1386,70 +1386,70 @@ export class ComposerEditor {
       return true;
     }
     if (INSERT_KEYS.has(stroke)) {
-      this.insert(editor, state, stroke, count);
+      this.#insert(editor, state, stroke, count);
       return true;
     }
     if (SIMPLE_KEYS.has(stroke)) {
-      this.simple(editor, state, stroke, count);
-      this.reset(state);
+      this.#simple(editor, state, stroke, count);
+      this.#reset(state);
       return true;
     }
     if (stroke === "p" || stroke === "P") {
-      this.put(editor, state, stroke, count);
+      this.#put(editor, state, stroke, count);
       return true;
     }
     if (stroke === "u") {
-      this.history(editor, state, false, count);
-      this.reset(state);
+      this.#history(editor, state, false, count);
+      this.#reset(state);
       return true;
     }
     if (stroke === ".") {
-      this.repeat(editor, state, count, counted);
+      this.#repeat(editor, state, count, counted);
       return true;
     }
     if (stroke === "/") {
-      if (state.mode.startsWith("visual")) this.rememberVisual(editor, state);
-      this.insert(editor, state, "i", 1);
-      this.insertText(editor, "/");
+      if (state.mode.startsWith("visual")) this.#rememberVisual(editor, state);
+      this.#insert(editor, state, "i", 1);
+      this.#insertText(editor, "/");
       return true;
     }
     if (stroke === "?") {
-      this.openSearch(editor, state, false);
+      this.#openSearch(editor, state, false);
       return true;
     }
     if (stroke === "enter") {
-      this.reset(state);
+      this.#reset(state);
       return false;
     }
     if (stroke.length !== 1 && !NAMED_MOTIONS.has(stroke)) {
-      this.reset(state);
+      this.#reset(state);
       return false;
     }
-    this.complete(editor, state, stroke, count, "", counted);
+    this.#complete(editor, state, stroke, count, "", counted);
     // Consume unknown Vim strokes so native editing does not insert them.
     return true;
   }
 
-  openSearch(editor: TextEditor, state: ComposerState, forward = true): void {
+  #openSearch(editor: TextEditor, state: ComposerState, forward = true): void {
     const original = editor.state;
     const operator = state.operator;
     const register = state.register;
     const count = (state.leading || 1) * (state.count || 1);
-    this.reset(state);
+    this.#reset(state);
     // A draft that changed while the prompt was open takes no search.
-    void this.tui.prompt({
+    void this.#tui.prompt({
       title: "Search draft (literal, case-sensitive)",
       text: state.query,
       signal: state.signal,
       onSubmit: (text) => {
-        if (!this.states.has(editor) || editor.state !== original) return;
+        if (!this.#states.has(editor) || editor.state !== original) return;
         if (text !== "") state.query = text;
         state.searchForward = forward;
         state.searchWhole = false;
         state.operator = operator;
         state.register = register;
-        this.complete(editor, state, "n", count);
-        this.refresh(editor, state);
+        this.#complete(editor, state, "n", count);
+        this.#refresh(editor, state);
       },
     });
   }

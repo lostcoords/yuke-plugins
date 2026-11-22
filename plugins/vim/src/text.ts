@@ -35,16 +35,16 @@ export function firstNonblank(text: string, at: number): number {
 }
 /** Vim motions and half-open operator ranges, with one cached segmentation. */
 export class Navigation {
-  private cachedText = "";
-  private cachedGraphemes: Int32Array = EMPTY_CELLS;
+  #cachedText = "";
+  #cachedGraphemes: Int32Array = EMPTY_CELLS;
   /** The partial destination of a failed word object or previous-end motion. */
   failureTarget = -1;
 
-  private cells(text: string): Int32Array {
-    if (this.cachedText === text) return this.cachedGraphemes;
-    this.cachedText = text;
-    this.cachedGraphemes = graphemes(text);
-    return this.cachedGraphemes;
+  #cells(text: string): Int32Array {
+    if (this.#cachedText === text) return this.#cachedGraphemes;
+    this.#cachedText = text;
+    this.#cachedGraphemes = graphemes(text);
+    return this.#cachedGraphemes;
   }
   /** The normal-mode caret, before the last grapheme of a nonempty line. */
   clamp(text: string, at: number): number {
@@ -56,10 +56,10 @@ export class Navigation {
   snap(text: string, at: number): number {
     if (at <= 0) return 0;
     if (at >= text.length) return text.length;
-    const left = text.charCodeAt(at - 1),
-      right = text.charCodeAt(at);
+    const left = text.charCodeAt(at - 1);
+    const right = text.charCodeAt(at);
     if (left < 256 && right < 256 && !(left === 13 && right === 10)) return at;
-    const cells = this.cells(text);
+    const cells = this.#cells(text);
     let before = 0;
     for (let index = 0; index < cells.length && (cells[index] as number) <= at; index += 3)
       before = cells[index] as number;
@@ -68,28 +68,28 @@ export class Navigation {
   /** The next grapheme boundary, or the end of the text. */
   next(text: string, at: number): number {
     if (at >= text.length) return text.length;
-    const currentCode = text.charCodeAt(at),
-      adjacentCode = text.charCodeAt(at + 1);
+    const currentCode = text.charCodeAt(at);
+    const adjacentCode = text.charCodeAt(at + 1);
     if (currentCode < 256 && (at + 1 === text.length || adjacentCode < 256))
       return at + (currentCode === 13 && adjacentCode === 10 ? 2 : 1);
-    return this.unicodeStep(text, at, true);
+    return this.#unicodeStep(text, at, true);
   }
   /** The previous grapheme boundary, or zero. */
   previous(text: string, at: number): number {
     if (at <= 0) return 0;
-    const currentCode = text.charCodeAt(at - 1),
-      adjacentCode = text.charCodeAt(at - 2);
+    const currentCode = text.charCodeAt(at - 1);
+    const adjacentCode = text.charCodeAt(at - 2);
     if (currentCode < 256 && (at === 1 || adjacentCode < 256))
       return at - (currentCode === 10 && adjacentCode === 13 ? 2 : 1);
-    return this.unicodeStep(text, at, false);
+    return this.#unicodeStep(text, at, false);
   }
-  private unicodeStep(text: string, at: number, forward: boolean): number {
-    const cells = this.cells(text);
-    let lower = 0,
-      upper = cells.length / 3 - 1;
+  #unicodeStep(text: string, at: number, forward: boolean): number {
+    const cells = this.#cells(text);
+    let lower = 0;
+    let upper = cells.length / 3 - 1;
     while (lower <= upper) {
-      const middle = (lower + upper) >>> 1,
-        start = cells[middle * 3] as number;
+      const middle = (lower + upper) >>> 1;
+      const start = cells[middle * 3] as number;
       if (start < at) lower = middle + 1;
       else if (start > at) upper = middle - 1;
       else
@@ -129,9 +129,9 @@ export class Navigation {
   /** The next word start; an operator stops at the last logical line end. */
   wordStart(text: string, at: number, count = 1, big = false, operator = false): number {
     for (let iteration = 0; iteration < count && at < text.length; iteration++) {
-      const motionClass = this.wordClass(text, at, big),
-        end = lineEnd(text, at),
-        origin = at;
+      const motionClass = this.wordClass(text, at, big);
+      const end = lineEnd(text, at);
+      const origin = at;
       at = this.next(text, at);
       if (operator && iteration === count - 1 && at >= end) return origin === end ? at : end;
       if (motionClass !== 0) {
@@ -203,10 +203,10 @@ export class Navigation {
   }
   /** The line-local f, F, t, or T destination, or -1 when no match exists. */
   find(text: string, at: number, kind: string, glyph: string, count: number, repeat = false): number {
-    const forward = kind === "f" || kind === "t",
-      till = kind === "t" || kind === "T";
-    const start = lineStart(text, at),
-      end = lineEnd(text, at);
+    const forward = kind === "f" || kind === "t";
+    const till = kind === "t" || kind === "T";
+    const start = lineStart(text, at);
+    const end = lineEnd(text, at);
     const scalar = glyph.length === ((glyph.codePointAt(0) as number) < 0x1_00_00 ? 1 : 2);
     let position = at;
     for (let iteration = 0; iteration < count; iteration++) {
@@ -254,22 +254,22 @@ export class Navigation {
     const end = lineEnd(text, at);
     while (at < end && !"()[]{}".includes(text.charAt(at))) at = this.next(text, at);
     if (at === end) return -1;
-    const open = "([{",
-      close = ")]}",
-      character = text.charAt(at),
-      forward = open.includes(character);
+    const open = "([{";
+    const close = ")]}";
+    const character = text.charAt(at);
+    const forward = open.includes(character);
     const mate = forward ? close.charAt(open.indexOf(character)) : open.charAt(close.indexOf(character));
     // Delimiters inside quoted strings do not participate in a pair.
-    const pairs = this.pairs(text, forward ? character : mate, forward ? mate : character);
+    const pairs = this.#pairs(text, forward ? character : mate, forward ? mate : character);
     for (let index = 0; index < pairs.length; index += 2) {
       if ((pairs[index] as number) === at) return pairs[index + 1] as number;
       if ((pairs[index + 1] as number) === at) return pairs[index] as number;
     }
     return -1;
   }
-  private pairs(text: string, open: string, close: string): number[] {
-    const stack: number[] = [],
-      pairs: number[] = [];
+  #pairs(text: string, open: string, close: string): number[] {
+    const stack: number[] = [];
+    const pairs: number[] = [];
     let quote = "";
     for (let at = 0; at < text.length; at = this.next(text, at)) {
       const character = text.charAt(at);
@@ -277,7 +277,7 @@ export class Navigation {
         quote = "";
         continue;
       }
-      if (this.escaped(text, at)) continue;
+      if (this.#escaped(text, at)) continue;
       if (quote) {
         if (character === quote) quote = "";
         continue;
@@ -300,7 +300,7 @@ export class Navigation {
     }
     return pairs;
   }
-  private escaped(text: string, at: number): boolean {
+  #escaped(text: string, at: number): boolean {
     let iteration = 0;
     while (at > 0 && text.charCodeAt(--at) === 92) iteration++;
     return (iteration & 1) !== 0;
@@ -309,15 +309,15 @@ export class Navigation {
   object(text: string, at: number, kind: string, around: boolean, count: number): Range | null {
     if (kind === "w" || kind === "W") return this.wordObject(text, at, around, count, kind === "W");
     if ("\"'`".includes(kind)) {
-      const start = lineStart(text, at),
-        end = lineEnd(text, at),
-        quotes: number[] = [];
+      const start = lineStart(text, at);
+      const end = lineEnd(text, at);
+      const quotes: number[] = [];
       for (let index = start; index < end; index = this.next(text, index))
-        if (text[index] === kind && !this.escaped(text, index)) quotes.push(index);
+        if (text[index] === kind && !this.#escaped(text, index)) quotes.push(index);
       for (let index = 0; index + 1 < quotes.length; index += 2) {
         if ((quotes[index + 1] as number) < at) continue;
-        let from = quotes[index] as number,
-          to = (quotes[index + 1] as number) + 1;
+        let from = quotes[index] as number;
+        let to = (quotes[index + 1] as number) + 1;
         if (!around && count === 1) {
           from++;
           to--;
@@ -333,15 +333,15 @@ export class Navigation {
     const index = "([{bB)]}".indexOf(kind);
     if (index < 0) return null;
     const slot = kind === "b" ? 0 : kind === "B" ? 2 : "([{)]}".indexOf(kind) % 3;
-    const found = this.pairs(text, "([{".charAt(slot), ")]}".charAt(slot));
-    let from = -1,
-      to = -1;
+    const found = this.#pairs(text, "([{".charAt(slot), ")]}".charAt(slot));
+    let from = -1;
+    let to = -1;
     for (let iteration = 0; iteration < count; iteration++) {
-      let best = -1,
-        width = Infinity;
+      let best = -1;
+      let width = Infinity;
       for (let index = 0; index < found.length; index += 2) {
-        const lower = found[index] as number,
-          upper = found[index + 1] as number;
+        const lower = found[index] as number;
+        const upper = found[index + 1] as number;
         if (lower <= at && upper >= at && (iteration === 0 || (lower < from && upper > to)) && upper - lower < width) {
           best = index;
           width = upper - lower;
@@ -369,15 +369,15 @@ export class Navigation {
   /** The inner or around word object, or null when the count exceeds the text. */
   wordObject(text: string, at: number, around: boolean, count: number, big: boolean): Range | null {
     let from = at;
-    const start = lineStart(text, at),
-      motionClass = this.wordClass(text, at, big);
+    const start = lineStart(text, at);
+    const motionClass = this.wordClass(text, at, big);
     while (from > start && this.wordClass(text, this.previous(text, from), big) === motionClass)
       from = this.previous(text, from);
-    let position = from,
-      inclusive = true;
+    let position = from;
+    let inclusive = true;
     const includeWhitespace = around && motionClass !== 0;
     if ((motionClass === 0) === around) {
-      position = this.objectEnd(text, position, big);
+      position = this.#objectEnd(text, position, big);
       if (position < 0) return null;
     } else {
       position = this.wordStart(text, position, 1, big, true);
@@ -404,7 +404,7 @@ export class Navigation {
           inclusive = false;
         } else position = this.previous(text, moved);
       } else {
-        position = this.objectEnd(text, position, big);
+        position = this.#objectEnd(text, position, big);
         if (position < 0) return null;
       }
     }
@@ -424,7 +424,7 @@ export class Navigation {
     const to = inclusive && position !== lineEnd(text, position) ? this.next(text, position) : position;
     return { from, to, target: from, lines: false, inclusive: false };
   }
-  private objectEnd(text: string, at: number, big: boolean): number {
+  #objectEnd(text: string, at: number, big: boolean): number {
     if (at >= text.length) {
       this.failureTarget = this.clamp(text, text.length);
       return -1;

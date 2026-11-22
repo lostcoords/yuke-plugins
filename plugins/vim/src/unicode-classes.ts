@@ -236,11 +236,11 @@ export function vimClass(code: number): number {
       ? 2
       : 1;
   }
-  let lower = 0,
-    upper = emoji.length / 2 - 1;
+  let lower = 0;
+  let upper = emoji.length / 2 - 1;
   while (lower <= upper) {
-    const middle = (lower + upper) >>> 1,
-      at = middle * 2;
+    const middle = (lower + upper) >>> 1;
+    const at = middle * 2;
     if (code < (emoji[at] as number)) upper = middle - 1;
     else if (code > (emoji[at + 1] as number)) lower = middle + 1;
     else return 3;
@@ -248,8 +248,8 @@ export function vimClass(code: number): number {
   lower = 0;
   upper = classes.length / 3 - 1;
   while (lower <= upper) {
-    const middle = (lower + upper) >>> 1,
-      at = middle * 3;
+    const middle = (lower + upper) >>> 1;
+    const at = middle * 3;
     if (code < (classes[at] as number)) upper = middle - 1;
     else if (code > (classes[at + 1] as number)) lower = middle + 1;
     else return classes[at + 2] as number;

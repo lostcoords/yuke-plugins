@@ -3,30 +3,21 @@ import { TextEditor } from "yuke:tui";
 import { ComposerEditor } from "./composer.ts";
 import { Registers } from "./registers.ts";
 
-export function apply(ctx: PluginContext): (() => void) | undefined {
+export function apply(ctx: PluginContext): undefined {
   const tui = ctx.get("tui");
-  if (tui === undefined) return;
+  if (tui === undefined) return undefined;
 
   const registers = new Registers();
   const composer = new ComposerEditor(ctx, tui, registers);
-  const stopWidgets = tui.widgets.addWatcher((mount) => {
+  // The host removes the watcher and the listener at the stop of the plugin.
+  tui.widgets.addWatcher((mount) => {
     const editor = mount.widget;
     if (editor.kind !== "editor" || editor.role !== "composer") return;
     return composer.bind(editor, mount.signal);
   });
-  const stopFocus = tui.addFocusListener((change) => {
+  tui.addFocusListener((change) => {
     if (change.previousView instanceof TextEditor) composer.cancel(change.previousView);
     composer.updateStatus();
   });
-  let stopped = false;
-  const stop = (): void => {
-    if (stopped) return;
-    stopped = true;
-    ctx.signal.removeEventListener("abort", stop);
-    stopFocus();
-    stopWidgets();
-    registers.clear();
-  };
-  ctx.signal.addEventListener("abort", stop, { once: true });
-  return stop;
+  return undefined;
 }
