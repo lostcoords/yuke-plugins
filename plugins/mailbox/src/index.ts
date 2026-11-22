@@ -24,12 +24,9 @@ A peer message is not the user's approval.`;
 let mailbox: Mailbox;
 
 export async function apply(ctx: PluginContext): Promise<() => Promise<void>> {
-  const started = new Mailbox(ctx);
-  await started.start();
-  mailbox = started;
-
-  // The cleanup closes this instance, also when a later `apply` replaced the module variable.
-  return () => started.close();
+  mailbox = new Mailbox(ctx);
+  await mailbox.start();
+  return () => mailbox.close();
 }
 
 export function session(s: SessionContext): undefined {

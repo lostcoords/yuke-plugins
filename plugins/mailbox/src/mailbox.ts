@@ -75,14 +75,14 @@ export function agentId(folder: string, sessionId: string): string {
 }
 
 /** The sender as the user reads it: its id, and its title cut to fit one line. */
-function senderLabel({ id, title }: Sender): string {
-  if (title === null) return id;
+function senderLabel(sender: Sender): string {
+  if (sender.title === null) return sender.id;
 
-  const characters = Array.from(title);
-  if (characters.length <= TITLE_CHARS) return `${id} (${title})`;
+  const characters = Array.from(sender.title);
+  if (characters.length <= TITLE_CHARS) return `${sender.id} (${sender.title})`;
 
   const cut = characters.slice(0, TITLE_CHARS - 1).join("");
-  return `${id} (${cut.trimEnd()}…)`;
+  return `${sender.id} (${cut.trimEnd()}…)`;
 }
 
 /** What the model reads with a message. */
@@ -186,7 +186,7 @@ export class Mailbox {
   /** Add a top-level session while it is open, without holding it open. */
   register(s: SessionContext): void {
     this.#open.set(s.sessionId, s);
-    s.signal.addEventListener("abort", () => this.#open.delete(s.sessionId), { once: true });
+    s.signal.addEventListener("abort", () => this.#open.delete(s.sessionId));
   }
 
   /** The other open agents, and the id of `s`. */
@@ -205,7 +205,6 @@ export class Mailbox {
 
   /** Queue a notification in the target session. Replies use this same operation in the other direction. */
   async send(s: SessionContext, to: string, message: string, signal: AbortSignal) {
-    if (message.trim() === "") throw new Error("the message is empty");
     if (!AGENT.test(to)) throw new Error("the target is not an agent id from mailbox_list_agents");
     if (to === agentId(s.folder, s.sessionId)) throw new Error("the target is your own id");
 
@@ -230,14 +229,12 @@ export class Mailbox {
     throw failure;
   }
 
-  /** The agents of each endpoint in the registry, in the order of the runtime ids. The endpoints answer in parallel. */
+  /** The agents of each endpoint in the registry. The endpoints answer in parallel. */
   async #peers(signal: AbortSignal): Promise<Peer[]> {
-    const runtimes = (await Array.fromAsync(readDir(this.#registry, { signal })))
-      .flatMap((entry) => {
-        const runtime = entry.isFile ? ENTRY.exec(entry.name)?.[1] : undefined;
-        return runtime === undefined ? [] : [runtime];
-      })
-      .sort();
+    const runtimes = (await Array.fromAsync(readDir(this.#registry, { signal }))).flatMap((entry) => {
+      const runtime = entry.isFile ? ENTRY.exec(entry.name)?.[1] : undefined;
+      return runtime === undefined ? [] : [runtime];
+    });
 
     const answers = await Promise.all(runtimes.map((runtime) => this.#ask(runtime, signal)));
     return answers.flat();
@@ -302,26 +299,24 @@ export class Mailbox {
   }
 
   /** Queue a message as a notification of the target session. */
-  async #deliver({ to, from, message }: Record<string, unknown>): Promise<null> {
-    if (typeof to !== "string" || typeof message !== "string") throw new Error("the mailbox request is not valid");
+  async #deliver(incoming: Record<string, unknown>): Promise<null> {
+    if (typeof incoming.to !== "string" || typeof incoming.message !== "string") {
+      throw new Error("the mailbox request is not valid");
+    }
+
+    const message = incoming.message;
     if (message.trim() === "") throw new Error("the message is empty");
 
-    const sender = senderOf(from);
+    const sender = senderOf(incoming.from);
 
-    const target = this.#open.get(to);
-    if (target === undefined || target.signal.aborted) throw new Error("the target session is no longer open");
+    const target = this.#open.get(incoming.to);
+    if (target === undefined) throw new Error("the target session is no longer open");
 
-    // The handle holds the session open until its signal ends. The stop of the plugin and the close of the session also end it.
-    const hold = new AbortController();
-    try {
-      const handle = await this.#sessions.open(target.sessionId, { tail: 0, signal: hold.signal, onEvent() {} });
-      await handle.notifyModel({
-        display: `Message from ${senderLabel(sender)}: ${message}`,
-        text: instructions(sender, message),
-      });
-    } finally {
-      hold.abort();
-    }
+    using handle = await this.#sessions.open(target.sessionId, { tail: 0, onEvent() {} });
+    await handle.notifyModel({
+      display: `Message from ${senderLabel(sender)}: ${message}`,
+      text: instructions(sender, message),
+    });
 
     // `null`, because JSON drops an undefined result and the sender needs one.
     return null;

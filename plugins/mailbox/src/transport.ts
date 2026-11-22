@@ -1,7 +1,4 @@
-import { ConnectionError, connect, listen, type UnixConnection } from "yuke:net";
-
-/** The longest frame, in UTF-16 units. A peer that sends more is broken or hostile. */
-const MAX_FRAME = 4 * 1024 * 1024;
+import { connect, listen, type UnixConnection } from "yuke:net";
 
 /** The pause after a failed accept, such as one with too many open files. */
 const ACCEPT_RETRY_MS = 1000;
@@ -14,22 +11,17 @@ export function sleep(ms: number): Promise<void> {
 /** Read one JSON line. A stream chunk can hold only part of a UTF-8 character or a message. */
 export async function readFrame(connection: UnixConnection): Promise<unknown> {
   const reader = connection.readable.getReader();
-  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const decoder = new TextDecoder();
   let text = "";
 
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) throw new Error("the peer closed before the message ended");
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) throw new Error("the peer closed before the message ended");
 
-      text += decoder.decode(chunk.value, { stream: true });
+    text += decoder.decode(chunk.value, { stream: true });
 
-      const end = text.indexOf("\n");
-      if (end !== -1) return JSON.parse(text.slice(0, end));
-      if (text.length > MAX_FRAME) throw new Error("the message is too large");
-    }
-  } finally {
-    reader.releaseLock();
+    const end = text.indexOf("\n");
+    if (end !== -1) return JSON.parse(text.slice(0, end));
   }
 }
 
@@ -86,7 +78,7 @@ export function serve(
       try {
         connection = await listener.accept();
       } catch (error) {
-        if (stopping.aborted || (error instanceof ConnectionError && error.code === "ERR_CLOSED")) return;
+        if (stopping.aborted) return;
 
         // A failed accept leaves the listener open. Without the retry, the endpoint would stay listed but never answer.
         report(error);
