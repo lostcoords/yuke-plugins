@@ -1,50 +1,33 @@
+import type { ChatService } from "yuke:chat";
 import { readTextFile } from "yuke:fs";
 import type { Sessions } from "yuke:plugins";
-import { assert, assertEquals, createFrame, createHost, reply, test, waitForSettled } from "yuke:test";
-import { apply } from "../src/index.ts";
-import { rows, withServices } from "./support.ts";
+import { assert, assertEquals, createFrame, createHost, folder, reply, test, waitForSettled } from "yuke:test";
 
 test("the settings command saves a picked model and regenerate renames the focused session without a reload", async () => {
   using frame = createFrame({ width: 100, height: 24 });
-  const tui = frame.surface("titles").tui;
-  let shown: string | undefined;
+  const tui = frame.surface("test").tui;
+  const dataDir = `${folder()}/titles`;
+  let chat: ChatService | undefined;
   let sessions: Sessions | undefined;
-  let dataDir = "";
   await using host = await createHost({
+    frame,
     plugins: [
+      { bundled: "chat" },
+      { folder: `${import.meta.dirname}/..`, dataDir },
       {
-        name: "chat",
-        provides: ["chat"],
-        apply(ctx) {
-          ctx.provide("chat", {
-            sessionIdOf: () => shown,
-            show: async () => {},
-            addChangeListener: () => () => {},
-            addPaneWatcher: () => () => {},
-            addCompletionProvider: () => () => {},
-            addComposerView: () => () => {},
-            setPresentation: () => () => {},
-            addReadOnly: () => () => {},
-            setComposerFrame: () => () => {},
-            setEmptyView: () => () => {},
-          });
-        },
-      },
-      {
-        name: "titles",
+        name: "probe",
         uses: ["chat"],
         apply(ctx) {
-          dataDir = ctx.dataDir;
+          chat = ctx.get("chat");
           sessions = ctx.get("sessions");
-          return apply(withServices(ctx, { tui }));
         },
       },
     ],
     replies: [reply.text("The issue is fixed."), reply.text("Fix login refresh")],
   });
   const session = await host.openSession();
-  shown = session.id;
-  tui.panes.split(() => ({ draw: (canvas) => canvas.text(0, 0, "Main conversation") }));
+  frame.start();
+  await chat?.show(session.id);
   await session.sendMessage("Fix login after the access token expires.");
   assert(sessions !== undefined);
   assertEquals((await sessions.get(session.id)).title, "Fix login after the access token expires.");
@@ -52,7 +35,7 @@ test("the settings command saves a picked model and regenerate renames the focus
 
   assertEquals(tui.commands.run("titles:settings"), true);
   await waitForSettled();
-  assert(rows(frame).some((row) => row.includes("No title models yet")));
+  assert(frame.rows().some((row) => row.includes("No title models yet")));
   frame.key("a");
   await waitForSettled();
   frame.paste("anthropic/claude-fable-5");
