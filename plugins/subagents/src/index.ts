@@ -148,7 +148,7 @@ export async function session(s: SessionContext): Promise<undefined> {
       },
       required: ["description", "message", "background"],
     },
-    hints: { subject: { argument: "description", kind: "text" } },
+    hints: { title: "Subagent", subject: { argument: "description", kind: "text" } },
     async execute(args, context) {
       const settings = await settingsOf(s, (args as { readonly model?: string }).model);
       const id = await sessions.create(settings, { parent: s.sessionId });
@@ -169,7 +169,7 @@ export async function session(s: SessionContext): Promise<undefined> {
       },
       required: ["id", "message", "background"],
     },
-    hints: { subject: { argument: "message", kind: "text" } },
+    hints: { title: "Message subagent", subject: { argument: "message", kind: "text" } },
     async execute(args, context) {
       const row = await rowOf(args.id);
       if (row?.parent !== s.sessionId) {

@@ -46,6 +46,7 @@ export function session(s: SessionContext): undefined {
     concurrency: "parallel",
     deferLoading: true,
     inputSchema: { type: "object", properties: {} },
+    hints: { title: "List agents" },
     async execute(_args, context) {
       return JSON.stringify(await mailbox.list(s, context.signal));
     },
@@ -67,7 +68,7 @@ export function session(s: SessionContext): undefined {
       },
       required: ["to", "message"],
     },
-    hints: { subject: { argument: "message", kind: "text" } },
+    hints: { title: "Send message", subject: { argument: "message", kind: "text" } },
     async execute(args, context) {
       return JSON.stringify(await mailbox.send(s, args.to, args.message, context.signal));
     },
