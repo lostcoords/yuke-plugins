@@ -7,7 +7,7 @@ import { assert, assertEquals, createFrame, createHost, folder, reply, test, wai
 import { apply, session } from "../src/index.ts";
 import { openModelDialog } from "../src/model-dialog.ts";
 import { ModelList, type SavedModels } from "../src/models.ts";
-import { rows, withServices } from "./support.ts";
+import { withServices } from "./support.ts";
 
 const OPUS = { thinking: { kind: "adaptive" }, effort: "high" };
 const CATALOG = {
@@ -188,9 +188,10 @@ async function dialog(saved?: SavedModels) {
 test("the dialog shows the session model as the default, and a saved model that is not ready", async () => {
   const state = await dialog({ models: [OPUS_ENTRY, GONE_ENTRY] });
   using _frame = state.frame;
-  const shown = rows(state.frame)
-    .map((row) => row.trimEnd().replace(/\s{2,}/g, "  "))
-    .filter((row) => row.trim() !== "");
+  const shown = state.frame
+    .rows()
+    .map((row) => row.replace(/\s{2,}/g, "  "))
+    .filter((row) => row !== "");
 
   assertEquals(shown.slice(-5), [
     " Subagent models",
@@ -201,7 +202,7 @@ test("the dialog shows the session model as the default, and a saved model that 
   ]);
 });
 
-test("a add picks a model and a level, and the list saves it", async () => {
+test("an add picks a model and a level, and the list saves it", async () => {
   const state = await dialog();
   using _frame = state.frame;
 
@@ -213,7 +214,7 @@ test("a add picks a model and a level, and the list saves it", async () => {
   await waitForSettled();
 
   assertEquals((await state.stored()).models, [OPUS_ENTRY]);
-  assert(rows(state.frame).join("\n").includes("The model list changes in new sessions."));
+  assert(state.frame.rows().join("\n").includes("The model list changes in new sessions."));
 });
 
 test("enter sets the default, the session row clears it, and d removes a model and its default", async () => {
@@ -239,7 +240,7 @@ test("enter sets the default, the session row clears it, and d removes a model a
   assertEquals(after, { models: [] });
 });
 
-test("a add of a model that the list holds keeps one row", async () => {
+test("an add of a model that the list holds keeps one row", async () => {
   const state = await dialog({ models: [OPUS_ENTRY] });
   using _frame = state.frame;
 

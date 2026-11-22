@@ -1,7 +1,7 @@
-import type { ChatReadOnly, ChatService } from "yuke:chat";
+import { type ChatReadOnly, type ChatService, composerRows } from "yuke:chat";
 import type { PluginContext } from "yuke:plugins";
 import type { SessionId } from "yuke:protocol";
-import { fit, type KeyEvent, strokeOf, type Tui, type View } from "yuke:tui";
+import { type KeyEvent, strokeOf, type Tui, type View } from "yuke:tui";
 import { type ListEntry, listRows, SHOWN } from "./list.ts";
 import { openModelDialog } from "./model-dialog.ts";
 import type { ModelList } from "./models.ts";
@@ -60,10 +60,7 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     name: "models",
     slash: "subagents:models",
     description: "Choose the models of subagents",
-    run: async () => {
-      const fail = (text: string): void => ctx.notify("error", text);
-      await openModelDialog(tui, models, fail).catch((error: unknown) => fail(String(error)));
-    },
+    run: () => openModelDialog(tui, models, (text) => ctx.notify("error", text)),
   });
 
   // A selection belongs to its pane, so a key in another pane never acts on it.
@@ -89,20 +86,14 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     };
   });
 
-  chat.addComposerView("above", (_mount, pane) => {
-    const waiting = (): number =>
-      pane.sessionId === undefined || source.busy(pane.sessionId) ? 0 : source.running(pane.sessionId).length;
-    return {
-      heightFor: () => (waiting() === 0 ? 0 : 1),
-      draw: (canvas) => {
-        const count = waiting();
-        if (count === 0) return;
-        const text = `Waiting for ${count} ${count === 1 ? "subagent" : "subagents"}`;
-        const shown = fit(text, canvas.width) === text.length ? text : `${text.slice(0, fit(text, canvas.width - 1))}…`;
-        canvas.text(0, 0, shown, { dim: true });
-      },
-    };
-  });
+  chat.addComposerView("above", (_mount, pane) =>
+    composerRows(() => {
+      const count =
+        pane.sessionId === undefined || source.busy(pane.sessionId) ? 0 : source.running(pane.sessionId).length;
+      if (count === 0) return [];
+      return [{ text: `Waiting for ${count} ${count === 1 ? "subagent" : "subagents"}`, style: { dim: true } }];
+    }),
+  );
 
   /** Take a key while a row is selected. A key with no meaning here leaves the selection and goes on to the composer. */
   const selectedKey = (event: KeyEvent): boolean => {
