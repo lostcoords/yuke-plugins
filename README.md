@@ -12,6 +12,12 @@ Small, independent plugins for [Yuke](https://github.com/lostcoords/yuke).
 | [titles](plugins/titles) | Short session titles with a model picker and optional fallbacks. |
 | [vim](plugins/vim) | Vim composer editing through public text widget APIs. |
 
+## Themes
+
+| Theme | Description |
+| --- | --- |
+| [solarized](themes/solarized) | Solarized for dark and light terminals, with 256-color fallbacks. |
+
 ## Installation
 
 Requires Yuke with the plugin manager. Name the plugins that you want:
@@ -34,6 +40,7 @@ yuke test plugins/mailbox/tests
 yuke test plugins/subagents/tests
 yuke test plugins/titles/tests
 yuke test plugins/vim/tests
+yuke test themes/solarized/tests
 ```
 
 ## License
