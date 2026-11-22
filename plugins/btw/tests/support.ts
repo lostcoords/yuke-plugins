@@ -50,7 +50,7 @@ export function scenario(name: string, options: ScenarioOptions, body: (scenario
         },
         { folder: `${import.meta.dirname}/..`, dataDir },
       ],
-      replies: options.replies ?? [],
+      replies: options.replies,
     });
     assert(chat !== undefined);
     const session = await host.openSession();
