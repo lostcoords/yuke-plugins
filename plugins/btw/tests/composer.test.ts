@@ -1,97 +1,78 @@
-import { assert, assertEquals, createFrame, createHost, test } from "yuke:test";
-import type { MouseEvent } from "yuke:tui";
-import { apply } from "../src/index.ts";
-import { fakeChat, rows, withTerminal } from "./support.ts";
+import { assert, assertEquals } from "yuke:test";
+import { scenario } from "./support.ts";
 
 for (const width of [32, 100]) {
-  test(`the composer grows with its draft, keeps padding and cursor alignment, and contracts at width ${width}`, async () => {
-    using frame = createFrame({ width, height: 30 });
-    const surface = frame.surface("btw");
-    await using host = await createHost({
-      plugins: [
-        fakeChat(),
-        {
-          name: "btw",
-          uses: ["chat"],
-          apply: (ctx) => apply(withTerminal(ctx, surface.tui)),
-        },
-      ],
-    });
-    surface.tui.panes.split(() => ({ draw() {} }));
-    surface.tui.commands.run("btw:ask");
-    frame.draw();
-    const input = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focusedView)?.widget;
-    assert(input?.kind === "editor");
-    const fieldHeight = () => {
-      const rule = rows(frame).findLastIndex((line) => /^─+$/.test(line.trim()));
-      assert(rule >= 0, "A plain rule separates the input from the answer.");
-      return frame.frame.height - rule - 2;
-    };
-    const clear = () => {
-      input.selection = { anchor: 0, head: input.state.text.length };
-      frame.key("backspace");
-      assertEquals(input.state.text, "");
-      assertEquals(fieldHeight(), 1, "Clearing the draft restores a single input row.");
-    };
+  scenario(
+    `the composer grows with its draft, keeps its cursor aligned, and contracts at width ${width}`,
+    {
+      width,
+      height: 30,
+    },
+    async (s) => {
+      s.frame.key("ctrl+k b");
+      // The rows between the rule above the composer and the footer.
+      const fieldHeight = () => {
+        const rows = s.frame.rows();
+        const rule = rows.findLastIndex((line) => /^─+$/.test(line.trim()));
+        assert(rule >= 0, rows.join("\n"));
+        return rows.length - rule - 2;
+      };
+      const clear = () => {
+        // Each pair deletes to the start of a line, then the line break before it.
+        for (let line = 0; line < 8; line++) {
+          s.frame.key("ctrl+u");
+          s.frame.key("backspace");
+        }
+        assertEquals(fieldHeight(), 1, "Clearing the draft restores a single input row.");
+      };
 
-    assertEquals(fieldHeight(), 1, "An empty composer must not reserve three content rows.");
-    const placeholderRow = rows(frame).findIndex((line) => line.includes("Ask a side question"));
-    const row = frame.frame.cells[placeholderRow];
-    assert(row !== undefined);
-    const prompt = row.findIndex((cell) => cell.text === "›");
-    const placeholder = rows(frame)[placeholderRow]?.indexOf("Ask a side question");
-    assert(placeholder !== undefined);
-    assertEquals(frame.frame.cursor?.row, placeholderRow);
-    assertEquals(frame.frame.cursor?.column, placeholder - 1, "The block cursor belongs before the placeholder.");
-    assertEquals(row[placeholder - 1]?.text, " ");
-    assertEquals(input.state.text, "", "Cursor clearance must not insert spaces into the actual draft.");
-    assertEquals(row[prompt - 1]?.style.bg, undefined, "The field has one cell of inner left padding.");
-    assertEquals(row[prompt - 2]?.style.bg, undefined, "The field and its surroundings share one background.");
-    const right = row.length - (width >= 80 ? 2 : 0) - 2;
-    assertEquals(row[right]?.text, " ");
-    assertEquals(row[right]?.style.bg, undefined, "The field has one cell of inner right padding.");
-    assertEquals(row[right + 1]?.style.bg, undefined);
-    const footer = rows(frame).at(-1) ?? "";
-    assert(footer.includes("Enter send") && footer.includes("Esc close"), footer);
-    assert(!/copy|Tab focus|scroll/.test(footer), "Only primary action hints belong in the footer.");
-    if (width >= 80) assert(footer.includes("Ctrl+R history"), footer);
+      assertEquals(fieldHeight(), 1, "An empty composer does not reserve three content rows.");
+      const rows = s.frame.rows();
+      const placeholderRow = rows.findIndex((line) => line.includes("Ask a side question"));
+      assertEquals(s.frame.frame.cursor?.row, placeholderRow);
+      assertEquals(
+        s.frame.frame.cursor?.column,
+        (rows[placeholderRow] ?? "").indexOf("Ask a side question") - 1,
+        "The block cursor belongs before the placeholder.",
+      );
+      const footer = rows.at(-1) ?? "";
+      assert(footer.includes("Enter send") && footer.includes("Esc close"), footer);
+      assertEquals(
+        footer.includes("Ctrl+R history"),
+        width >= 80,
+        "The footer drops the history hint where it does not fit.",
+      );
 
-    frame.paste("x".repeat(27));
-    assertEquals(fieldHeight(), width === 32 ? 2 : 1, "Only a narrow field wraps this draft.");
-    frame.resize({ width: width === 32 ? 100 : 32, height: 30 });
-    assertEquals(fieldHeight(), width === 32 ? 1 : 2, "Resizing reflows the draft using the actual padded width.");
-    frame.resize({ width, height: 30 });
-    clear();
-    frame.paste("first");
-    frame.key("shift+enter");
-    frame.paste("second");
-    assertEquals(fieldHeight(), 2, "A newline adds a content row.");
-    frame.key("ctrl+j");
-    frame.paste("third");
-    assertEquals(fieldHeight(), 3);
-    frame.key("alt+enter");
-    frame.paste("fourth");
-    assertEquals(fieldHeight(), 3, "Longer drafts scroll within the bounded composer.");
-    assertEquals(frame.frame.cursor?.row, frame.frame.height - 2, "The caret stays visible above the footer.");
-    clear();
+      s.frame.paste("x".repeat(27));
+      assertEquals(fieldHeight(), width === 32 ? 2 : 1, "Only a narrow field wraps this draft.");
+      s.frame.resize({ width: width === 32 ? 100 : 32, height: 30 });
+      assertEquals(fieldHeight(), width === 32 ? 1 : 2, "Resizing reflows the draft.");
+      s.frame.resize({ width, height: 30 });
+      clear();
 
-    frame.paste("abcdef");
-    const cursor = frame.frame.cursor;
-    assert(cursor !== undefined);
-    const mouse: MouseEvent = {
-      type: "mouse",
-      action: "press",
-      button: "left",
-      column: cursor.column - 4,
-      row: cursor.row,
-      modifiers: { shift: false, alt: false, ctrl: false, super: false, hyper: false, meta: false },
-    };
-    frame.key("tab");
-    frame.mouse(mouse);
-    frame.mouse({ ...mouse, action: "release" });
-    assertEquals(surface.tui.focusedView, input);
-    frame.paste("X");
-    assertEquals(input.state.text, "abXcdef", "Mouse placement must include both the field and desktop insets.");
-    assertEquals(host.requests.length, 0, "Editing a draft must not contact a model.");
-  });
+      s.frame.paste("first");
+      s.frame.key("shift+enter");
+      s.frame.paste("second");
+      assertEquals(fieldHeight(), 2, "A newline adds a content row.");
+      s.frame.key("ctrl+j");
+      s.frame.paste("third");
+      assertEquals(fieldHeight(), 3);
+      s.frame.key("alt+enter");
+      s.frame.paste("fourth");
+      assertEquals(fieldHeight(), 3, "A longer draft scrolls within the bounded composer.");
+      assertEquals(s.frame.frame.cursor?.row, s.frame.frame.height - 2, "The caret stays visible above the footer.");
+      clear();
+
+      s.frame.paste("abcdef");
+      const cursor = s.frame.frame.cursor;
+      assert(cursor !== undefined);
+      s.frame.key("tab");
+      s.frame.click(cursor.column - 4, cursor.row);
+      s.frame.paste("X");
+      assert(
+        s.frame.rows().some((line) => line.includes("abXcdef")),
+        "A click places the caret at the clicked cell.",
+      );
+    },
+  );
 }

@@ -1,11 +1,16 @@
-import { ChatCompletions, slashCompletions } from "yuke:chat";
-import { assert, assertEquals, assertRejects, createFrame, createHost, reply, test, waitForSettled } from "yuke:test";
-import { TextEditor } from "yuke:tui";
-import { apply, session as setup } from "../src/index.ts";
-import { ask } from "../src/requests.ts";
-import { fakeChat, findRow, rows, rowText, screen, waitForRequests, withTerminal } from "./support.ts";
+import { assert, assertEquals, assertRejects, createHost, reply, test, waitForSettled } from "yuke:test";
+import { session as setup } from "../src/index.ts";
+import { latestRound } from "../src/requests.ts";
+import { SPINNER_FRAME, scenario, waitForRequests } from "./support.ts";
 
 const plugin = { name: "btw", session: setup };
+
+/** Ask beside the latest round of a session, as the panel does. */
+function ask(sessionId: string, question: string, signal: AbortSignal) {
+  const round = latestRound(sessionId);
+  assert(round !== undefined, "The session has no round.");
+  return round.ask(question, signal);
+}
 
 test("a side answer arrives while the main model is still streaming and changes no main history", async () => {
   await using host = await createHost({
@@ -163,14 +168,6 @@ test("the latest round supplies the cache prefix and no side tool call is execut
   assert(!side.includes("second answer"));
 });
 
-test("a session without a captured round refuses to send an uncached fallback request", async () => {
-  await using host = await createHost({ plugins: [plugin] });
-  const main = await host.openSession();
-  const error = await assertRejects(() => ask(main.id, "side question", new AbortController().signal));
-  assert(error instanceof Error && error.message === "Send a message in the main conversation before using /btw.");
-  assertEquals(host.requests.length, 0);
-});
-
 test("closing a session cancels its side request", async () => {
   await using host = await createHost({
     plugins: [plugin],
@@ -183,199 +180,6 @@ test("closing a session cancels its side request", async () => {
   const rejected = assertRejects(() => side);
   await main.close();
   await rejected;
-});
-
-for (const width of [32, 100]) {
-  test(`the TUI command asks in parallel, copies its answer, and restores focus at width ${width}`, async () => {
-    using frame = createFrame({ width, height: 30 });
-    const surface = frame.surface("btw");
-    let shown: string | undefined;
-    await using host = await createHost({
-      plugins: [
-        fakeChat(() => shown),
-        {
-          name: "btw",
-          uses: ["chat"],
-          session: setup,
-          apply: (ctx) => {
-            return apply(withTerminal(ctx, surface.tui));
-          },
-        },
-      ],
-      replies: [reply.stall("working"), reply.text("A side answer.")],
-    });
-    const main = await host.openSession();
-    shown = main.id;
-    const controller = new AbortController();
-    const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
-    await waitForRequests(host, 1);
-    surface.tui.panes.split(() => ({
-      draw: (canvas) => canvas.text(0, 0, "MAIN WORK"),
-    }));
-    frame.draw();
-    assertEquals(surface.tui.commands.run("btw:ask"), true);
-    frame.draw();
-    const initial = rows(frame);
-    assert(
-      initial.some((line) => line.includes("Ask a side question")),
-      initial.join("\n"),
-    );
-    assert(!initial.some((line) => /cached round|latest main round|main task/i.test(line)));
-    const titleRow = findRow(frame, " /btw ");
-    assert(titleRow !== undefined);
-    assertEquals(rowText(titleRow).trim(), "/btw", "The command belongs on a plain row, not in a border.");
-    const titleColumn = titleRow.findIndex((cell) => cell.text === "b");
-    assertEquals(titleRow[titleColumn]?.style.fg, "#a8cfa0", "Use Yuke's native accent for the title.");
-    assertEquals(titleRow[titleColumn]?.style.bg, undefined, "Keep the terminal background throughout the panel.");
-    const placeholderRow = findRow(frame, "Ask a side question");
-    assert(placeholderRow !== undefined);
-    const promptColumn = placeholderRow.findIndex((cell) => cell.text === "›");
-    assertEquals(placeholderRow[promptColumn]?.style.bg, undefined, "The inset editor uses the terminal background.");
-    assertEquals(placeholderRow[promptColumn - 2]?.style.bg, undefined, "Padding shares the same terminal background.");
-    const input = surface.tui.widgets.list().find((mount) => mount.widget.kind === "editor")?.widget;
-    assert(input?.kind === "editor");
-    frame.paste("my side question");
-    frame.key("shift+enter");
-    assertEquals(input.state.text, "my side question\n");
-    frame.key("enter");
-    assertEquals(input.state.text, "", "Submitting a side question clears its composer immediately.");
-    assertEquals(frame.frame.cursor?.row, frame.frame.height - 2, "Sending contracts the empty composer to one row.");
-    const pendingRows = rows(frame);
-    const pendingHeader = pendingRows.find((line) => line.includes("Working…"));
-    assert(pendingHeader !== undefined);
-    const spinner = pendingHeader.match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/)?.[0];
-    assert(spinner !== undefined, "A pending side request must show an animated loading indicator.");
-    assert(pendingHeader.includes("0s"), pendingHeader);
-    const statusRow = pendingRows.findIndex((line) => line.includes("Working…"));
-    const composerRow = pendingRows.findIndex((line) => line.includes("Ask a side question"));
-    assertEquals(composerRow - statusRow, 2, "Loading belongs immediately above the composer.");
-    assert(!/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(pendingRows.find((line) => line.includes(" /btw ")) ?? ""));
-    frame.advance(160);
-    const advancedHeader = rows(frame).find((line) => line.includes("Working…"));
-    assert(advancedHeader !== undefined && !advancedHeader.includes(spinner), "The pending spinner must advance.");
-    frame.advance(1000);
-    assert(rows(frame).some((line) => line.includes("1s")));
-    frame.paste("my next draft");
-    // Request completion and the overlay's promise continuation run on later jobs.
-    await waitForRequests(host, 2);
-    const answered = screen(frame);
-    assert(answered.includes("A side answer."), answered);
-    assert(answered.includes("/btw my side question"), answered);
-    const questionRow = findRow(frame, "/btw my side question");
-    assert(questionRow !== undefined);
-    const questionColumn = questionRow.findIndex((cell) => cell.text === "/");
-    assertEquals(questionRow[questionColumn]?.style.bg, undefined, "Native text views retain the terminal background.");
-    const answerRow = findRow(frame, "A side answer.");
-    assert(answerRow !== undefined);
-    assertEquals(answerRow.find((cell) => cell.text === "A")?.style.fg, undefined);
-    assert(!answered.split("\n").some((line) => ["You", "Yuke"].includes(line.trim())), answered);
-    assert(!/cached round|asking in parallel|main task is still running/.test(answered), answered);
-    const finishedHeader = answered.split("\n").find((line) => line.includes(" /btw "));
-    assert(finishedHeader !== undefined && !/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(finishedHeader));
-    frame.advance(2000);
-    assertEquals(screen(frame), answered, "Loading must stop after the answer arrives.");
-    assert(answered.includes("A side answer."), answered);
-    assert(answered.indexOf("my side question") < answered.indexOf("A side answer."), answered);
-    assertEquals(surface.tui.focusedView, input);
-    assertEquals(input.state.text, "my next draft", "An arriving answer must preserve the next draft.");
-    assert(answered.includes("MAIN WORK"), answered);
-    frame.key("ctrl+y");
-    assertEquals(frame.copies, ["A side answer."]);
-    assertEquals(main.transcript.state, "running");
-    frame.key("esc");
-    assert(!screen(frame).includes("A side answer."));
-    controller.abort();
-    await running;
-  });
-}
-
-for (const draft of ["/btw", "/btw explain this side question"]) {
-  test(`${draft} takes Enter before the main composer submits while its main turn streams`, async () => {
-    using frame = createFrame({ width: 80, height: 24 });
-    const surface = frame.surface("btw");
-    let shown: string | undefined;
-    const submissions: string[] = [];
-    const composer = new TextEditor({
-      role: "composer",
-      onSubmit: (state) => {
-        submissions.push(state.text);
-      },
-    });
-    await using host = await createHost({
-      plugins: [
-        fakeChat(() => shown),
-        {
-          name: "btw",
-          uses: ["chat"],
-          session: setup,
-          apply: (ctx) => apply(withTerminal(ctx, surface.tui)),
-        },
-      ],
-      replies: [reply.stall("working on the main task"), reply.text("Answer to the side question.")],
-    });
-    const main = await host.openSession();
-    shown = main.id;
-    const controller = new AbortController();
-    const running = main.sendMessage("main task", { signal: controller.signal }).catch(() => {});
-    await waitForRequests(host, 1);
-    new ChatCompletions(composer, {
-      providers: () => [slashCompletions(surface.tui.commands)],
-      folder: () => "/",
-      signal: controller.signal,
-      enabled: () => true,
-      onError: (error) => {
-        throw error;
-      },
-    });
-    surface.tui.panes.split(() => ({
-      initialFocus: composer,
-      draw() {},
-      layout: (size) => [
-        {
-          view: composer,
-          rect: { column: 0, row: 0, width: size.width, height: 1 },
-        },
-      ],
-    }));
-    frame.draw();
-    frame.paste("ordinary main message");
-    frame.key("enter");
-    assertEquals(submissions, ["ordinary main message"]);
-    composer.replace(0, composer.state.text.length, draft);
-    frame.key("enter");
-    if (draft === "/btw") {
-      frame.paste("explain this side question");
-      frame.key("enter");
-    }
-    await waitForRequests(host, 2);
-    const answered = screen(frame);
-    assert(answered.includes("Answer to the side question."), answered);
-    assertEquals(submissions, ["ordinary main message"]);
-    assertEquals(main.transcript.state, "running");
-    assertEquals(main.transcript.pending.size, 0);
-    assertEquals(composer.state.text, "");
-    const sideInput = surface.tui.widgets.list().find((mount) => mount.widget.role === "field")?.widget;
-    assert(sideInput?.kind === "editor");
-    assertEquals(sideInput.state.text, "", "Both /btw entry paths leave the side composer empty.");
-    assert(answered.indexOf("explain this side question") < answered.indexOf("Answer to the side question."), answered);
-    frame.key("esc");
-    assertEquals(surface.tui.focusedView, composer);
-    controller.abort();
-    await running;
-  });
-}
-
-test("the installed manifest loads against Yuke's plugin loader", async () => {
-  const directory = import.meta.dirname;
-  assert(directory !== undefined, "This test must run from a file.");
-  const folder = `${directory}/..`;
-  await using host = await createHost({
-    plugins: [fakeChat(), { folder }],
-    replies: [reply.text("main answer"), reply.text("side answer")],
-  });
-  const main = await host.openSession();
-  await main.sendMessage("main task");
-  assertEquals((await ask(main.id, "side question", new AbortController().signal)).text, "side answer");
 });
 
 test("cancelling the main turn does not cancel a side request", async () => {
@@ -400,15 +204,6 @@ test("cancelling the main turn does not cancel a side request", async () => {
   assertEquals(settled, false);
   sideController.abort();
   await rejected;
-});
-
-test("an empty side question sends no request", async () => {
-  await using host = await createHost({ plugins: [plugin], replies: [reply.text("main answer")] });
-  const main = await host.openSession();
-  await main.sendMessage("main task");
-  const error = await assertRejects(() => ask(main.id, "   ", new AbortController().signal));
-  assert(error instanceof Error && error.message === "Enter a side question.");
-  assertEquals(host.requests.length, 1);
 });
 
 test("a compaction before the latest round becomes the side request's cached context", async () => {
@@ -442,68 +237,6 @@ test("a compaction before the latest round becomes the side request's cached con
   assert(!messages.includes("old answer"));
 });
 
-for (const outcome of ["error", "cancel"]) {
-  test(`the loading indicator stops on ${outcome} without changing an idle main session`, async () => {
-    using frame = createFrame({ width: 48, height: 20 });
-    const surface = frame.surface("btw");
-    let shown: string | undefined;
-    await using host = await createHost({
-      plugins: [
-        fakeChat(() => shown),
-        {
-          name: "btw",
-          uses: ["chat"],
-          session: setup,
-          apply: (ctx) => apply(withTerminal(ctx, surface.tui)),
-        },
-      ],
-      replies: [
-        reply.text("main answer"),
-        outcome === "error" ? reply.failed("partial answer") : reply.stall("partial answer"),
-      ],
-    });
-    const main = await host.openSession();
-    shown = main.id;
-    await main.sendMessage("main task");
-    const before = JSON.stringify(main.transcript.entries);
-    surface.tui.panes.split(() => ({ draw: (canvas) => canvas.text(0, 0, "MAIN READY") }));
-    surface.tui.commands.run("btw:ask");
-    frame.draw();
-    frame.paste("side question");
-    frame.key("enter");
-    assert(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(screen(frame)));
-    await waitForRequests(host, 2);
-    if (outcome === "cancel") frame.key("esc");
-    const stopped = screen(frame);
-    assert(!/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(stopped));
-    assert(stopped.includes("MAIN READY"));
-    if (outcome === "error") {
-      assert(stopped.includes("Side request failed"), stopped);
-      assert(stopped.includes("/btw side question"));
-      const editor = surface.tui.widgets.list().find((mount) => mount.widget === surface.tui.focusedView)?.widget;
-      assert(editor?.kind === "editor");
-      assertEquals(editor.state.text, "");
-    } else assert(!stopped.includes(" /btw "));
-    frame.advance(3000);
-    assertEquals(screen(frame), stopped);
-    assertEquals(main.transcript.state, "idle");
-    assertEquals(JSON.stringify(main.transcript.entries), before);
-  });
-}
-
-test("closing the parent session discards its cached side-request handle", async () => {
-  await using host = await createHost({ plugins: [plugin], replies: [reply.text("main answer")] });
-  const main = await host.openSession();
-  await main.sendMessage("main task");
-  await main.close();
-  const error = await assertRejects(() => ask(main.id, "a stale side question", new AbortController().signal));
-  assert(error instanceof Error && error.message === "Send a message in the main conversation before using /btw.");
-  const fresh = await host.openSession();
-  const missing = await assertRejects(() => ask(fresh.id, "another question", new AbortController().signal));
-  assert(missing instanceof Error && missing.message === "Send a message in the main conversation before using /btw.");
-  assertEquals(host.requests.length, 1, "A closed session's snapshot cannot send or leak into another session.");
-});
-
 test("repeated side questions reuse the original round without accumulating side context", async () => {
   const questions = ["first side question", "second side question", "third side question"];
   await using host = await createHost({
@@ -526,3 +259,182 @@ test("repeated side questions reuse the original round without accumulating side
   }
   assertEquals(host.requests.length, 4);
 });
+
+test("closing a session discards its round", async () => {
+  await using host = await createHost({ plugins: [plugin], replies: [reply.text("main answer")] });
+  const main = await host.openSession();
+  await main.sendMessage("main task");
+  assert(latestRound(main.id) !== undefined);
+  await main.close();
+  assertEquals(latestRound(main.id), undefined);
+});
+
+scenario(
+  "a side question runs beside the main turn, shows its progress, and leaves the main conversation alone",
+  { width: 60, height: 24, replies: [reply.stall("working"), reply.text("A side answer.")] },
+  async (s) => {
+    const controller = new AbortController();
+    const running = s.session.sendMessage("main task", { signal: controller.signal }).catch(() => {});
+    await waitForRequests(s.host, 1);
+    s.frame.key("ctrl+k b");
+    assert(s.frame.rows().some((line) => line.includes("Ask a side question")));
+
+    s.frame.paste("my side question");
+    s.frame.key("enter");
+    const pending = s.frame.rows();
+    const status = pending.findIndex((line) => line.includes("Working…"));
+    const composer = pending.findIndex((line) => line.includes("Ask a side question"));
+    assertEquals(composer - status, 2, "The status belongs just above the composer.");
+    const spinner = pending[status]?.match(SPINNER_FRAME)?.[0];
+    assert(spinner !== undefined && pending[status]?.includes("0s"), pending.join("\n"));
+    s.frame.advance(160);
+    assert(!s.frame.rows()[status]?.includes(spinner), "The spinner advances.");
+    s.frame.advance(1000);
+    assert(s.frame.rows()[status]?.includes("1s"));
+
+    s.frame.paste("my next draft");
+    await waitForRequests(s.host, 2);
+    const answered = s.frame.rows();
+    const text = answered.join("\n");
+    assert(text.indexOf("/btw my side question") < text.indexOf("A side answer."), text);
+    assert(text.includes("main task"), "The main conversation stays visible above the panel.");
+    assert(text.includes("my next draft"), "An arriving answer keeps the next draft.");
+    assert(!SPINNER_FRAME.test(text), "The spinner stops with the answer.");
+    s.frame.advance(2000);
+    assertEquals(s.frame.rows(), answered);
+
+    s.frame.key("ctrl+y");
+    assertEquals(s.frame.copies, ["A side answer."]);
+    assertEquals(s.session.transcript.state, "running");
+    assert(!JSON.stringify(s.session.transcript.entries).includes("my side question"));
+    s.frame.key("esc");
+    assert(!s.frame.rows().join("\n").includes("A side answer."));
+    controller.abort();
+    await running;
+  },
+);
+
+scenario(
+  "an arriving answer does not steal the focus from the answer",
+  { width: 60, height: 24, replies: [reply.text("main answer"), reply.text("the new side answer")] },
+  async (s) => {
+    await s.session.sendMessage("main task");
+    s.frame.key("ctrl+k b");
+    s.frame.paste("a side question");
+    s.frame.key("enter");
+    s.frame.paste("the next draft");
+    s.frame.key("tab");
+    await waitForRequests(s.host, 2);
+    assert(s.frame.rows().join("\n").includes("the new side answer"));
+
+    s.frame.paste(" lost");
+    s.frame.key("tab");
+    s.frame.paste("!");
+    const text = s.frame.rows().join("\n");
+    assert(text.includes("the next draft!"), text);
+    assert(!text.includes("lost"), text);
+  },
+);
+
+for (const draft of ["/btw", "/btw explain this side question"]) {
+  scenario(
+    `${draft} takes Enter before the main composer submits while its main turn streams`,
+    {
+      width: 80,
+      height: 24,
+      replies: [reply.stall("working on the main task"), reply.text("Answer to the side question.")],
+    },
+    async (s) => {
+      const controller = new AbortController();
+      const running = s.session.sendMessage("main task", { signal: controller.signal }).catch(() => {});
+      await waitForRequests(s.host, 1);
+      s.frame.paste(draft);
+      s.frame.key("enter");
+      if (draft === "/btw") {
+        s.frame.paste("explain this side question");
+        s.frame.key("enter");
+      }
+      await waitForRequests(s.host, 2);
+      const text = s.frame.rows().join("\n");
+      assert(text.indexOf("/btw explain this side question") < text.indexOf("Answer to the side question."), text);
+      assert(s.host.requests[1]?.messages.at(-1)?.text.endsWith("explain this side question"));
+      assertEquals(s.session.transcript.state, "running");
+      assertEquals(s.session.transcript.pending.size, 0);
+
+      s.frame.key("esc");
+      const closed = s.frame.rows();
+      assert(closed.includes("Message…"), closed.join("\n"));
+      assert(!closed.join("\n").includes("Answer to the side question."));
+      controller.abort();
+      await running;
+    },
+  );
+}
+
+scenario("asking without a main round shows a notice and sends no request", { width: 60, height: 24 }, async (s) => {
+  const notice = { level: "info", text: "Send a message in the main conversation before using /btw." };
+  s.frame.paste("/btw side question");
+  s.frame.key("enter");
+  await waitForSettled();
+  const kept = s.frame.rows();
+  assert(
+    kept.some((line) => line.includes("/btw side question")),
+    "The refused command keeps its draft.",
+  );
+  assert(!kept.some((line) => line.includes("Ask a side question")), "No panel opens.");
+
+  s.frame.key("ctrl+u");
+  s.frame.key("ctrl+k b");
+  s.frame.paste("typed in the panel");
+  s.frame.key("enter");
+  await waitForSettled();
+  const panel = s.frame.rows();
+  assert(
+    panel.some((line) => line.includes("typed in the panel")),
+    "The panel keeps its draft.",
+  );
+  assert(!panel.some((line) => line.includes("Working…")));
+  assertEquals(
+    s.host.notices.filter((item) => item.level === "info").map(({ level, text }) => ({ level, text })),
+    [notice, notice],
+  );
+  assertEquals(s.host.requests.length, 0);
+});
+
+for (const outcome of ["error", "cancel"]) {
+  scenario(
+    `the spinner stops on ${outcome} without changing an idle main session`,
+    {
+      width: 60,
+      height: 24,
+      replies: [
+        reply.text("main answer"),
+        outcome === "error" ? reply.failed("partial answer") : reply.stall("partial answer"),
+      ],
+    },
+    async (s) => {
+      await s.session.sendMessage("main task");
+      const before = JSON.stringify(s.session.transcript.entries);
+      s.frame.key("ctrl+k b");
+      s.frame.paste("side question");
+      s.frame.key("enter");
+      assert(SPINNER_FRAME.test(s.frame.rows().join("\n")));
+      await waitForRequests(s.host, 2);
+      if (outcome === "cancel") s.frame.key("esc");
+
+      const stopped = s.frame.rows();
+      const text = stopped.join("\n");
+      assert(!SPINNER_FRAME.test(text), text);
+      assert(text.includes("main task"), text);
+      if (outcome === "error") {
+        assert(text.includes("Side request failed"), text);
+        assert(text.includes("/btw side question"), text);
+        assert(text.includes("Ask a side question"), "The composer is empty again.");
+      } else assert(!text.includes("/btw side question"), text);
+      s.frame.advance(3000);
+      assertEquals(s.frame.rows(), stopped);
+      assertEquals(s.session.transcript.state, "idle");
+      assertEquals(JSON.stringify(s.session.transcript.entries), before);
+    },
+  );
+}

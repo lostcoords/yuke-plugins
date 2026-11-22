@@ -1,77 +1,71 @@
-import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
+import type { ChatService } from "yuke:chat";
+import { mkdir } from "yuke:fs";
 import {
   assert,
   assertEquals,
+  createFrame,
+  createHost,
   type FrameTest,
+  folder,
   type Host,
-  type PluginUnderTest,
-  type ScreenCell,
+  type Reply,
+  type TestSession,
+  test,
   waitForSettled,
 } from "yuke:test";
-import type { Tui } from "yuke:tui";
 
-/** The text of one row of cells. */
-export function rowText(row: readonly ScreenCell[]): string {
-  return row.map((cell) => cell.text).join("");
+/** What a test of the panel gets: the real chat on a frame, the plugin `btw` from its folder, and one shown session. */
+export interface Scenario {
+  frame: FrameTest;
+  host: Host;
+  session: TestSession;
+  /** The data folder of the plugin `btw`. */
+  dataDir: string;
 }
 
-/** Draw the frame, and give the text of each row. */
-export function rows(frame: FrameTest): string[] {
-  frame.draw();
-  return frame.frame.cells.map(rowText);
+export interface ScenarioOptions {
+  width: number;
+  height: number;
+  replies?: readonly Reply[];
 }
 
-/** Draw the frame, and give its text with one row per line. */
-export function screen(frame: FrameTest): string {
-  return rows(frame).join("\n");
+/** Register a test that runs `body` with a fresh session on the pane of the real chat. */
+export function scenario(name: string, options: ScenarioOptions, body: (scenario: Scenario) => Promise<void>): void {
+  test(name, async () => {
+    let chat: ChatService | undefined;
+    const dataDir = `${folder()}/btw`;
+    await mkdir(dataDir);
+    using frame = createFrame({ width: options.width, height: options.height }, undefined, { folder: "/w" });
+    await using host = await createHost({
+      frame,
+      plugins: [
+        { bundled: "chat" },
+        {
+          name: "probe",
+          uses: ["chat"],
+          apply: (ctx) => {
+            chat = ctx.get("chat");
+            return undefined;
+          },
+        },
+        { folder: `${import.meta.dirname}/..`, dataDir },
+      ],
+      replies: options.replies ?? [],
+    });
+    assert(chat !== undefined);
+    const session = await host.openSession();
+    frame.start();
+    await chat.show(session.id);
+    await waitForSettled();
+    await body({ frame, host, session, dataDir });
+  });
 }
 
-/** Draw the frame, and give the cells of the first row that holds `text`. */
-export function findRow(frame: FrameTest, text: string): readonly ScreenCell[] | undefined {
-  frame.draw();
-  return frame.frame.cells.find((row) => rowText(row).includes(text));
-}
-
-/** Let the host work, then check that the screen shows `text`. */
+/** Let the host work, then check that the frame shows `text`. */
 export async function waitForScreen(frame: FrameTest, text: string): Promise<void> {
   await waitForSettled();
-  const shown = screen(frame);
+  const shown = frame.rows().join("\n");
   assert(shown.includes(text), shown);
-}
-
-/** A chat service without behavior. `session` names the session that the chat shows. */
-export function fakeChat(session: () => string | undefined = () => undefined): PluginUnderTest {
-  return {
-    name: "chat",
-    provides: ["chat"],
-    apply: (ctx) => {
-      ctx.provide("chat", {
-        sessionIdOf: session,
-        show: async () => {},
-        addChangeListener: () => () => {},
-        addPaneWatcher: () => () => {},
-        addCompletionProvider: () => () => {},
-        addComposerView: () => () => {},
-        setPresentation: () => () => {},
-        addReadOnly: () => () => {},
-        setComposerFrame: () => () => {},
-        setEmptyView: () => () => {},
-      });
-    },
-  };
-}
-
-/** Give the plugin the terminal of a frame surface in place of the headless one of the test host. */
-export function withTerminal(ctx: PluginContext, tui: Tui): PluginContext {
-  // The fake chat service omits the style registrations of the bundled chat.
-  tui.styles.add({
-    "chat.title": { fg: "accent", bold: true },
-    "chat.hint": { fg: "accent" },
-    "chat.meta": { dim: true },
-  });
-  const get = <K extends keyof Services & string>(name: K): ServiceOf<K> =>
-    name === "tui" ? (tui as ServiceOf<K>) : ctx.get(name);
-  return { ...ctx, get };
 }
 
 /** Let the host work, then check that the fake model got `count` requests. */
@@ -79,3 +73,6 @@ export async function waitForRequests(host: Host, count: number): Promise<void> 
   await waitForSettled();
   assertEquals(host.requests.length, count);
 }
+
+/** A frame of the spinner of the panel. */
+export const SPINNER_FRAME = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
