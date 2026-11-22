@@ -1,0 +1,4 @@
+{
+  "extends": "./.yuke/tsconfig.json",
+  "include": ["plugins/**/*.ts", ".yuke/types/*.d.ts"]
+}

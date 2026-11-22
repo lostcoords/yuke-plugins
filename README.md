@@ -29,6 +29,21 @@ Or run `/plugins` in Yuke, press `a`, paste the URL of this repository, and sele
 
 Run `/reload` while idle. Use `/plugins` to manage and update installed plugins.
 
+## Checks
+
+From a checkout of this repository, with [mise](https://mise.jdx.dev):
+
+```sh
+mise run check
+```
+
+It checks the types, the format, and the lint rules, and it runs the tests of each plugin with the `yuke` on `PATH`.
+To check against a build of [yuke-rs](https://github.com/lostcoords/yuke), name its binary and its API:
+
+```sh
+YUKE=../yuke-rs/target/debug/yuke YUKE_LIB=../yuke-rs/crates/js mise run check
+```
+
 ## License
 
 [MIT](LICENSE)

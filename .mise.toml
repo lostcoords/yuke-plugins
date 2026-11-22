@@ -1,0 +1,25 @@
+# Run each check of a change: `mise run check`. The checks use the yuke on PATH and its API in ~/.local/lib/yuke.
+# For a build of yuke-rs, set YUKE to its binary and YUKE_LIB to its crates/js folder, for example:
+# YUKE=../yuke-rs/target/debug/yuke YUKE_LIB=../yuke-rs/crates/js mise run check
+[tools]
+# The same versions as yuke-rs.
+"github:microsoft/TypeScript" = { version = "7.0.2", bin_path = "lib", strip_components = 1 }
+biome = "2.5.15"
+
+[env]
+YUKE = "{{ get_env(name='YUKE', default='yuke') }}"
+YUKE_LIB = "{{ get_env(name='YUKE_LIB', default=env.HOME ~ '/.local/lib/yuke') }}"
+
+[tasks.types]
+description = "Check the types of the plugins against the API of YUKE_LIB"
+# tsconfig.json extends the configuration of the API through this link.
+run = ['ln -sfn "$YUKE_LIB" .yuke', "tsc -p tsconfig.json"]
+
+[tasks.test]
+description = "Run the tests of each plugin with YUKE"
+run = '"$YUKE" test plugins'
+
+[tasks.check]
+description = "Run every check that a change must pass"
+depends = ["types"]
+run = ["biome ci --error-on-warnings", '"$YUKE" test plugins']
