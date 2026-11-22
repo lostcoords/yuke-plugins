@@ -1,0 +1,10 @@
+{
+  "name": "solarized",
+  "version": "0.1.0",
+  "description": "A Solarized theme for dark and light terminals, with 256-color fallbacks.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts"
+    }
+  }
+}
