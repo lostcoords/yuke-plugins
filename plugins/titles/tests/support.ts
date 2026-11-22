@@ -1,16 +1,4 @@
 import type { PluginContext, ServiceOf, Services } from "yuke:plugins";
-import type { FrameTest } from "yuke:test";
-
-/** Draw the frame, and give the text of each row without its trailing spaces. */
-export function rows(frame: FrameTest): string[] {
-  frame.draw();
-  return frame.frame.cells.map((row) =>
-    row
-      .map((cell) => cell.text)
-      .join("")
-      .trimEnd(),
-  );
-}
 
 /** The services that a test replaces. */
 type Replacements = { readonly [K in keyof Services & string]?: ServiceOf<K> };

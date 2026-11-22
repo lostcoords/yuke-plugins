@@ -12,11 +12,7 @@ export async function apply(ctx: PluginContext): Promise<() => Promise<void>> {
       name: "settings",
       slash: "titles:settings",
       description: "Choose session title models and their fallback order",
-      run: async () => {
-        await openModelDialog(tui, titles.models, (text) => ctx.notify("error", text)).catch((error: unknown) =>
-          ctx.notify("error", `The title settings did not open: ${String(error)}`),
-        );
-      },
+      run: () => openModelDialog(tui, titles.models, (text) => ctx.notify("error", text)),
     });
 
     tui.commands.add({
@@ -32,9 +28,7 @@ export async function apply(ctx: PluginContext): Promise<() => Promise<void>> {
           return;
         }
 
-        await titles
-          .regenerate(id)
-          .catch((error: unknown) => ctx.notify("error", `The session title did not change: ${String(error)}`));
+        await titles.regenerate(id);
       },
     });
 

@@ -17,7 +17,7 @@ function messageText(input: Pick<Frozen<Input>, "kind" | "source" | "content">):
 }
 
 /** Read the first user message with text, from the displayed inputs in saved history. */
-export async function firstMessage(
+async function firstMessage(
   sessions: Sessions,
   id: SessionId,
 ): Promise<{ readonly id: InputId; readonly text: string } | undefined> {
@@ -162,8 +162,6 @@ export class Titles {
         continue;
       }
 
-      const attempt = new AbortController();
-      const timer = setTimeout(() => attempt.abort(new Error("The title request timed out.")), 15_000);
       let title: string;
 
       try {
@@ -181,7 +179,7 @@ Use no quotes or punctuation at the end.
 Reply with ONLY the title, nothing else.`,
           prompt: text.slice(0, 4000),
           maxOutputTokens: 128,
-          signal: AbortSignal.any([signal, attempt.signal]),
+          signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
         });
 
         title = answer.text.replace(/\s+/gu, " ").trim();
@@ -193,8 +191,6 @@ Reply with ONLY the title, nothing else.`,
         signal.throwIfAborted();
         failures.push(`${modelId(entry)}: ${String(error)}`);
         continue;
-      } finally {
-        clearTimeout(timer);
       }
 
       signal.throwIfAborted();

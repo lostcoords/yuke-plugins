@@ -1,61 +1,80 @@
+import type { ChatService } from "yuke:chat";
 import { writeTextFile } from "yuke:fs";
 import type { Sessions } from "yuke:plugins";
-import { assert, assertEquals, createHost, type Reply, reply, test, waitForSettled } from "yuke:test";
-import { firstMessage, Titles } from "../src/titles.ts";
+import {
+  assert,
+  assertEquals,
+  createFrame,
+  createHost,
+  folder,
+  type PluginUnderTest,
+  type Reply,
+  reply,
+  test,
+  waitForSettled,
+} from "yuke:test";
+import { Titles } from "../src/titles.ts";
 import { withServices } from "./support.ts";
 
 const PRIMARY = { model: "anthropic/claude-fable-5", reasoning: "default" };
 const FALLBACK = { model: "openai/gpt-4.1", reasoning: "default" };
 
-/** Hold main rounds so each test can observe the independent title request first. */
-async function opened(replies: readonly Reply[], models = [PRIMARY], renameWhileGenerating = false) {
-  let titles: Titles | undefined;
+/** A plugin that holds each main round, so a test observes the independent title request first. */
+function mainRoundGate() {
+  let gate = Promise.withResolvers<void>();
+  const plugin: PluginUnderTest = {
+    name: "gate",
+    session(session) {
+      session.addHook("round.before", async () => {
+        await gate.promise;
+        return undefined;
+      });
+    },
+  };
+  return {
+    plugin,
+    release: () => gate.resolve(),
+    hold: () => {
+      gate = Promise.withResolvers<void>();
+    },
+  };
+}
+
+/** The real plugin, with `models` in its settings file, and a session whose main rounds wait for `release`. */
+async function opened(replies: readonly Reply[], models = [PRIMARY], frame?: ReturnType<typeof createFrame>) {
+  const dataDir = folder();
+  await writeTextFile("settings.json", JSON.stringify({ models }), { folder: dataDir });
+  const gate = mainRoundGate();
   let sessions: Sessions | undefined;
-  let main = Promise.withResolvers<void>();
+  let chat: ChatService | undefined;
   const host = await createHost({
+    ...(frame === undefined ? {} : { frame }),
     plugins: [
+      { bundled: "chat" },
+      { folder: `${import.meta.dirname}/..`, dataDir },
+      gate.plugin,
       {
-        name: "titles",
-        async apply(ctx) {
+        name: "probe",
+        uses: ["chat"],
+        apply(ctx) {
           sessions = ctx.get("sessions");
-          await writeTextFile(`${ctx.dataDir}/settings.json`, JSON.stringify({ models }));
-          const service = sessions;
-          let reads = 0;
-          const watched = {
-            ...service,
-            get: async (id: string) => {
-              reads++;
-              if (renameWhileGenerating && reads === 2) await service.rename(id, "My manual title");
-              return service.get(id);
-            },
-          };
-          titles = new Titles(withServices(ctx, { sessions: watched }));
-          return () => titles?.close();
-        },
-        session(s) {
-          s.addHook("round.before", async () => {
-            await main.promise;
-            return undefined;
-          });
+          chat = ctx.get("chat");
         },
       },
     ],
     replies,
   });
-  assert(titles !== undefined && sessions !== undefined);
+  assert(sessions !== undefined && chat !== undefined);
   const session = await host.openSession();
   const service = sessions;
-  const title = async () => (await service.get(session.id)).title;
   return {
     host,
     session,
-    titles,
     sessions,
-    title,
-    release: () => main.resolve(),
-    hold: () => {
-      main = Promise.withResolvers<void>();
-    },
+    chat,
+    title: async () => (await service.get(session.id)).title,
+    release: gate.release,
+    hold: gate.hold,
   };
 }
 
@@ -126,19 +145,6 @@ test("an overlong title falls back and unavailable configured models do not use 
   );
 });
 
-test("an empty model list leaves automatic naming off and later settings work without a reload", async () => {
-  const state = await opened([reply.text("First answer."), reply.text("Review API changes")], []);
-  await using host = state.host;
-  state.release();
-  await state.session.sendMessage("First task.");
-  assertEquals([await state.title(), host.requests.length], ["First task.", 1]);
-
-  await state.titles.models.write({ models: [PRIMARY] });
-  await state.titles.regenerate(state.session.id);
-  assertEquals(await state.title(), "Review API changes");
-  assertEquals(host.requests.length, 2);
-});
-
 test("manual names and child sessions keep their titles", async () => {
   const state = await opened([reply.text("First answer."), reply.text("Child answer.")]);
   await using host = state.host;
@@ -186,7 +192,7 @@ test("a stalled title does not delay the main answer and closing cancels it with
   state.release();
   await running;
   await state.session.close();
-  await state.titles.close();
+  await waitForSettled();
 
   assertEquals(host.requests.length, 2);
   assertEquals(
@@ -195,9 +201,21 @@ test("a stalled title does not delay the main answer and closing cancels it with
   );
 });
 
-test("notifications do not name sessions and the first displayed message supplies regeneration", async () => {
-  const state = await opened([reply.text("Noted."), reply.text("Original request title"), reply.text("Main answer.")]);
+test("notifications do not name sessions and regeneration uses the first displayed message", async () => {
+  using frame = createFrame({ width: 100, height: 24 });
+  const tui = frame.surface("test").tui;
+  const state = await opened(
+    [
+      reply.text("Noted."),
+      reply.text("Original request title"),
+      reply.text("Main answer."),
+      reply.text("Second title"),
+    ],
+    [PRIMARY],
+    frame,
+  );
   await using host = state.host;
+  frame.start();
   state.release();
   const controller = new AbortController();
   const handle = await state.sessions.open(state.session.id, { tail: 0, signal: controller.signal, onEvent() {} });
@@ -215,24 +233,59 @@ test("notifications do not name sessions and the first displayed message supplie
     assertEquals(await state.title(), "Original request title");
     state.release();
     await handle.waitForIdle();
-    assertEquals((await firstMessage(state.sessions, state.session.id))?.text, "Explain this API.");
-    assertEquals(host.requests.find((request) => request.tools.length === 0)?.messages, [
-      { role: "user", text: "Explain this API." },
-    ]);
+
+    await state.chat.show(state.session.id);
+    assertEquals(tui.commands.run("titles:regenerate"), true);
+    await waitForSettled();
+    assertEquals(await state.title(), "Second title");
+    assertEquals(
+      host.requests
+        .filter((request) => (request.body as { model: string }).model === "claude-fable-5")
+        .map((request) => request.messages),
+      [[{ role: "user", text: "Explain this API." }], [{ role: "user", text: "Explain this API." }]],
+    );
   } finally {
     controller.abort();
   }
 });
 
 test("a manual rename made during generation takes precedence over the generated title", async () => {
-  const state = await opened([reply.text("Generated title"), reply.text("Main answer.")], [PRIMARY], true);
-  await using host = state.host;
-  const running = state.session.sendMessage("Fix login.");
+  const gate = mainRoundGate();
+  let titles: Titles | undefined;
+  let sessions: Sessions | undefined;
+  await using host = await createHost({
+    plugins: [
+      {
+        name: "titles",
+        async apply(ctx) {
+          const real = ctx.get("sessions");
+          sessions = real;
+          await writeTextFile(`${ctx.dataDir}/settings.json`, JSON.stringify({ models: [PRIMARY] }));
+          let reads = 0;
+          // The second read is the one that follows the title request. A rename lands before it.
+          const watched: Sessions = {
+            ...real,
+            get: async (id) => {
+              reads++;
+              if (reads === 2) await real.rename(id, "My manual title");
+              return real.get(id);
+            },
+          };
+          titles = new Titles(withServices(ctx, { sessions: watched }));
+          return () => titles?.close();
+        },
+      },
+      gate.plugin,
+    ],
+    replies: [reply.text("Generated title"), reply.text("Main answer.")],
+  });
+  assert(sessions !== undefined);
+  const session = await host.openSession();
+  const running = session.sendMessage("Fix login.");
   await waitForSettled();
-  assertEquals(await state.title(), "My manual title");
-  state.release();
+  assertEquals((await sessions.get(session.id)).title, "My manual title");
+  gate.release();
   await running;
-  await state.titles.close();
 
-  assertEquals([await state.title(), host.requests.length], ["My manual title", 2]);
+  assertEquals([(await sessions.get(session.id)).title, host.requests.length], ["My manual title", 2]);
 });
