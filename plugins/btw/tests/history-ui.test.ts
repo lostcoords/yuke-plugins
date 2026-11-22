@@ -223,7 +223,7 @@ test("history deletion requires explicit confirmation and respects the session s
 test("a narrow confirmation rejects lowercase input and Esc returns to history", async () => {
   using frame = createFrame({ width: 32, height: 30 });
   const loaded = await setup(frame);
-  await using host = loaded.host;
+  await using _host = loaded.host;
   await loaded.history.save({ ...record, sessionId: loaded.main.id });
   loaded.tui.commands.run("btw:history");
   await waitForScreen(frame, "earlier question");

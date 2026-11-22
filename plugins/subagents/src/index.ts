@@ -396,9 +396,7 @@ async function stop(active: Running): Promise<void> {
 /** The report of the session `id` from the events after `before`: its status, and its final message. */
 async function reportOf(id: SessionId, before: number): Promise<JobReport> {
   const events = await sessions.events(id, { limit: REPORT_EVENTS });
-  const commits = events.flatMap((event) =>
-    event.kind === "commit" && event.seq > before ? [event.commit] : [],
-  );
+  const commits = events.flatMap((event) => (event.kind === "commit" && event.seq > before ? [event.commit] : []));
   // A failed hook leaves the input pending and saves no commit.
   if (commits.length === 0) return { status: "failed", text: "The subagent did not start. A notice tells why." };
   const end = commits.at(-1)?.end;

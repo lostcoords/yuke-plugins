@@ -18,9 +18,7 @@ export function panelView(view: View): View {
     layout: (size) => {
       const margin = size.width >= 80 ? 2 : 0;
 
-      return [
-        { view, rect: { column: margin, row: 0, width: size.width - margin * 2, height: size.height } },
-      ];
+      return [{ view, rect: { column: margin, row: 0, width: size.width - margin * 2, height: size.height } }];
     },
   };
 }

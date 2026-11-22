@@ -80,7 +80,9 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
         const chosen = selected?.pane === pane.view && selected.parent === pane.sessionId ? selected.index : undefined;
         // A short place scrolls, so the selected row stays in sight.
         const first = Math.max(0, (chosen ?? 0) - canvas.height + 1);
-        for (const [at, text] of rowsAt(canvas.width).slice(first, first + canvas.height).entries()) {
+        for (const [at, text] of rowsAt(canvas.width)
+          .slice(first, first + canvas.height)
+          .entries()) {
           canvas.text(0, at, text, first + at === chosen ? { fg: "accent", bold: true } : { dim: true });
         }
       },

@@ -31,11 +31,7 @@ export function session(context: SessionContext): () => void {
 }
 
 /** Ask against the latest round without changing its prompt, tools, settings, or context. */
-export async function ask(
-  sessionId: string,
-  question: string,
-  signal: AbortSignal,
-): Promise<TextAnswer> {
+export async function ask(sessionId: string, question: string, signal: AbortSignal): Promise<TextAnswer> {
   const round = rounds.get(sessionId);
   if (round === undefined) throw new Error(NO_ROUND);
 
