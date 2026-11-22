@@ -2,7 +2,6 @@ import { FileSystemError, lstat, mkdir, readDir, remove, writeTextFile } from "y
 import { listen } from "yuke:net";
 import type { Sessions } from "yuke:plugins";
 import { assert, assertEquals, assertRejects, createHost, type Reply, reply, type TestSession, test } from "yuke:test";
-import { apply as subagentsApply, session as subagentsSession } from "../../subagents/src/index.ts";
 import { apply, session } from "../src/index.ts";
 import { type Agent, agentId, type Sender } from "../src/mailbox.ts";
 import { serve } from "../src/transport.ts";
@@ -167,6 +166,13 @@ test("a direct message wakes an idle session and reaches the model as an agent n
   // The model reads the whole sender as JSON.
   const text = host.requests[0]?.messages.at(-1)?.text ?? "";
   assert(text.includes("Message from another Yuke session, not the user."), text);
+
+  // The tools wait behind tool search, and the prompt tells the model what they are for.
+  assert(host.requests[0]?.system.includes("<mailbox>"));
+  assertEquals(
+    host.requests[0]?.tools.filter((name) => name.startsWith("mailbox_")),
+    [],
+  );
 
   const line = text.split("\n").at(-1)?.replace("</system_notification>", "") ?? "";
   assertEquals(JSON.parse(line) as { from: Sender; message: string }, {
@@ -384,69 +390,4 @@ test("a message to a busy session waits for its running tool and reaches the nex
   const messages = host.requests[1]?.messages.map((message) => message.text).join("\n") ?? "";
   assert(messages.includes("the tool finished"), messages);
   assert(messages.includes('"message":"Use the new API."'), messages);
-});
-
-test("mailbox tools stay deferred beside subagent tools and discovery works through tool search", async () => {
-  await using host = await createHost({
-    plugins: [
-      { name: "subagents", apply: subagentsApply, session: subagentsSession },
-      { name: "mailbox", apply, session },
-    ],
-    replies: [
-      reply.toolCalls([{ name: "tool_search", args: { query: "mailbox_list_agents", limit: 1 } }]),
-      reply.toolCalls([{ name: "tool_call", args: { name: "mailbox_list_agents", arguments: {} } }]),
-      reply.text("I found the peer."),
-    ],
-  });
-
-  const first = await host.openSession();
-  const second = await host.openSession();
-  const target = (await list(second)).self;
-
-  await first.sendMessage("Find the other session.");
-  assertEquals(host.requests.length, 3);
-
-  const initial = host.requests[0]?.tools ?? [];
-  assertEquals(
-    initial.some((name) => name.startsWith("mailbox_")),
-    false,
-  );
-  assert(initial.includes("spawn_subagent") && initial.includes("tool_search"), initial.join(", "));
-
-  const search = host.requests[1]?.messages.at(-1)?.text ?? "";
-  assert(search.includes("mailbox_list_agents"), search);
-  assert(search.includes("Input schema:"), search);
-
-  const result = JSON.parse(host.requests[2]?.messages.at(-1)?.text ?? "") as Listing;
-  assertEquals(
-    result.agents.map((agent) => agent.id),
-    [target],
-  );
-});
-
-test("the coordination hint preserves existing prompt sections and appears once in each turn", async () => {
-  const state = await opened([reply.text("First answer."), reply.text("Second answer.")]);
-  await using host = state.host;
-
-  const built = await state.first.runHook("prompt.build", {
-    sections: { base: "Keep the user's instructions.", project: "Work only on src/." },
-  });
-  assertEquals(Object.keys(built.sections), ["base", "project", "mailbox"]);
-  assertEquals([built.sections.base, built.sections.project], ["Keep the user's instructions.", "Work only on src/."]);
-
-  await state.first.sendMessage("First turn.");
-  await state.first.sendMessage("Second turn.");
-
-  const count = (system: string, tag: string) => system.split(tag).length - 1;
-  assertEquals(
-    host.requests.map((request) => [count(request.system, "<mailbox>"), count(request.system, "</mailbox>")]),
-    [
-      [1, 1],
-      [1, 1],
-    ],
-  );
-  assertEquals(
-    host.requests.map((request) => request.tools.filter((name) => name.startsWith("mailbox_"))),
-    [[], []],
-  );
 });
