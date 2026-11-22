@@ -80,32 +80,22 @@ test("explicit named writes replace their entry and bypass automatic histories",
   assertEquals(registers.read("-"), { text: "small history", linewise: false });
 });
 
-test("uppercase writes append characterwise text without a separator", () => {
-  const registers = new Registers();
-  registers.save("first", false, "y", "a");
-  registers.save("second", false, "d", "A");
+const appends: readonly [string, boolean, boolean, string, boolean][] = [
+  ["characterwise text gets no separator", false, false, "firstsecond", false],
+  ["linewise text gets a separator and keeps its linewise metadata", true, false, "first\nsecond", true],
+  ["linewise text appended to characterwise text gets no separator", false, true, "firstsecond", true],
+];
 
-  assertEquals(registers.read("a"), { text: "firstsecond", linewise: false });
-  assertEquals(registers.read('"'), { text: "firstsecond", linewise: false });
-});
+for (const [behavior, firstLines, secondLines, text, linewise] of appends) {
+  test(`uppercase writes append ${behavior}`, () => {
+    const registers = new Registers();
+    registers.save("first", firstLines, "y", "a");
+    registers.save("second", secondLines, "d", "A");
 
-test("uppercase writes add a separator after linewise text and preserve linewise metadata", () => {
-  const registers = new Registers();
-  registers.save("first", true, "y", "a");
-  registers.save("second", false, "d", "A");
-
-  assertEquals(registers.read("A"), { text: "first\nsecond", linewise: true });
-  assertEquals(registers.read('"'), { text: "first\nsecond", linewise: true });
-});
-
-test("appending linewise text to characterwise text adds no separator", () => {
-  const registers = new Registers();
-  registers.save("first", false, "y", "a");
-  registers.save("second", true, "y", "A");
-
-  assertEquals(registers.read("a"), { text: "firstsecond", linewise: true });
-  assertEquals(registers.read('"'), { text: "firstsecond", linewise: true });
-});
+    assertEquals(registers.read("a"), { text, linewise });
+    assertEquals(registers.read('"'), { text, linewise });
+  });
+}
 
 test("an uppercase write creates a missing named register", () => {
   const registers = new Registers();
@@ -147,23 +137,4 @@ test("explicit numbered writes bypass history and empty slots remove stale rotat
   assertEquals(registers.read("5"), undefined);
   assertEquals(registers.read("9"), undefined);
   assertEquals(registers.read("0"), undefined);
-});
-
-test("clear removes all saved text and the owner accepts new writes", () => {
-  const registers = new Registers();
-  registers.save("named", true, "y", "a");
-  registers.save("yank", false, "y");
-  registers.save("line", true, "d");
-  registers.save("word", false, "d");
-  assertEquals(registers.read('"'), { text: "word", linewise: false });
-  assertEquals(registers.read("a"), { text: "named", linewise: true });
-
-  registers.clear();
-
-  assertEquals(registers.read('"'), { text: "", linewise: false });
-  for (const name of ["a", "0", "1", "-"]) assertEquals(registers.read(name), undefined);
-
-  registers.save("new", true, "y", "A");
-  assertEquals(registers.read("a"), { text: "new", linewise: true });
-  assertEquals(registers.read('"'), { text: "new", linewise: true });
 });

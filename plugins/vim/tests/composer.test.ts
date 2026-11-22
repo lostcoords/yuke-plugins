@@ -45,9 +45,9 @@ const cases: readonly [string, string, number, string, string, number][] = [
 ];
 
 for (const [behavior, text, caret, keys, expectedText, expectedCaret] of cases) {
-  test(`normal mode: ${behavior}`, () => {
-    const fixture = composer(text);
-    using frame = fixture.frame;
+  test(`normal mode: ${behavior}`, async () => {
+    await using fixture = await composer(text);
+    const frame = fixture.frame;
     frame.key("esc");
     fixture.editor.caret = caret;
     frame.key(keys);
@@ -56,9 +56,9 @@ for (const [behavior, text, caret, keys, expectedText, expectedCaret] of cases) 
   });
 }
 
-test("the editor starts in insert mode and Escape changes the visible cursor before any motion", () => {
-  const fixture = composer();
-  using frame = fixture.frame;
+test("the editor starts in insert mode and Escape changes the visible cursor before any motion", async () => {
+  await using fixture = await composer();
+  const frame = fixture.frame;
   frame.key("a b c");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["abc", 3]);
   assertEquals(frame.frame.cursor, { column: 5, row: 1, shape: "bar" });
@@ -70,9 +70,9 @@ test("the editor starts in insert mode and Escape changes the visible cursor bef
   assertEquals(frame.frame.cursor, { column: 3, row: 1, shape: "bar" });
 });
 
-test("visual selection includes whole graphemes and yanks only that selection", () => {
-  const fixture = composer("a👩‍💻e\u0301b");
-  using frame = fixture.frame;
+test("visual selection includes whole graphemes and yanks only that selection", async () => {
+  await using fixture = await composer("a👩‍💻e\u0301b");
+  const frame = fixture.frame;
   frame.key("esc l v l");
   assertEquals(fixture.editor.state.text, "a👩‍💻e\u0301b");
   assertEquals(fixture.editor.caret, 6);
@@ -88,9 +88,9 @@ test("visual selection includes whole graphemes and yanks only that selection", 
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["a👩‍💻e\u0301b👩‍💻e\u0301", 14]);
 });
 
-test("deletion and put preserve whole Unicode clusters and combining characters", () => {
-  const fixture = composer("a👩‍💻e\u0301");
-  using frame = fixture.frame;
+test("deletion and put preserve whole Unicode clusters and combining characters", async () => {
+  await using fixture = await composer("a👩‍💻e\u0301");
+  const frame = fixture.frame;
   frame.key("esc l x");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["ae\u0301", 1]);
   frame.key("P");
@@ -100,17 +100,17 @@ test("deletion and put preserve whole Unicode clusters and combining characters"
   assertEquals(frame.copies, []);
 });
 
-test("deletion snaps the caret when regional indicators join into one cluster", () => {
-  const fixture = composer("🇯x🇵");
-  using frame = fixture.frame;
+test("deletion snaps the caret when regional indicators join into one cluster", async () => {
+  await using fixture = await composer("🇯x🇵");
+  const frame = fixture.frame;
   frame.key("esc l x");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["🇯🇵", 0]);
   assertEquals(frame.frame.cursor, { column: 2, row: 1, shape: "block" });
 });
 
-test("CRLF append stays before the line end and line deletion removes both end units", () => {
-  const fixture = composer("first\r\nsecond");
-  using frame = fixture.frame;
+test("CRLF append stays before the line end and line deletion removes both end units", async () => {
+  await using fixture = await composer("first\r\nsecond");
+  const frame = fixture.frame;
   frame.key("esc A X esc");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["firstX\r\nsecond", 5]);
   frame.key("d d");
@@ -119,9 +119,9 @@ test("CRLF append stays before the line end and line deletion removes both end u
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["firstX\nsecond", 0]);
 });
 
-test("linewise delete and put handle the final line without adding an empty line", () => {
-  const fixture = composer("a\nb\nc");
-  using frame = fixture.frame;
+test("linewise delete and put handle the final line without adding an empty line", async () => {
+  await using fixture = await composer("a\nb\nc");
+  const frame = fixture.frame;
   frame.key("esc G d d");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["a\nb", 2]);
   frame.key("p");
@@ -130,9 +130,9 @@ test("linewise delete and put handle the final line without adding an empty line
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["a\nc\nb", 2]);
 });
 
-test("linewise yanks copy line text while puts and deletes keep the clipboard unchanged", () => {
-  const fixture = composer("first\nsecond");
-  using frame = fixture.frame;
+test("linewise yanks copy line text while puts and deletes keep the clipboard unchanged", async () => {
+  await using fixture = await composer("first\nsecond");
+  const frame = fixture.frame;
   frame.key("esc y y");
   assertEquals(frame.copies, ["first"]);
   frame.key("p");
@@ -142,9 +142,9 @@ test("linewise yanks copy line text while puts and deletes keep the clipboard un
   assertEquals(frame.copies, ["first"]);
 });
 
-test("named register append and the black hole keep independent register contents", () => {
-  const fixture = composer("red blue");
-  using frame = fixture.frame;
+test("named register append and the black hole keep independent register contents", async () => {
+  await using fixture = await composer("red blue");
+  const frame = fixture.frame;
   frame.key('esc " a y i w w " A y i w');
   assertEquals(frame.copies, ["red", "blue"]);
   frame.key('" _ y i w');
@@ -154,7 +154,7 @@ test("named register append and the black hole keep independent register content
   assertEquals(frame.copies, ["red", "blue"]);
 });
 
-test("composers share registers but keep their modes and undo histories separate", () => {
+test("composers share registers but keep their modes and undo histories separate", async () => {
   const first = new TextEditor({
     role: "composer",
     state: { text: "red blue", selection: { anchor: 0, head: 0 }, spans: [] },
@@ -163,8 +163,8 @@ test("composers share registers but keep their modes and undo histories separate
     role: "composer",
     state: { text: "Y", selection: { anchor: 0, head: 0 }, spans: [] },
   });
-  const fixture = harness([first, second]);
-  using frame = fixture.frame;
+  await using fixture = await harness([first, second]);
+  const frame = fixture.frame;
   frame.key("esc y i w");
   assertEquals(frame.copies, ["red"]);
   assertEquals(fixture.surface.tui.focus(second), true);
@@ -180,9 +180,9 @@ test("composers share registers but keep their modes and undo histories separate
   assertEquals(second.state.text, "XY");
 });
 
-test("insert typing, paste, and Ctrl+W form an undo group that redo restores", () => {
-  const fixture = composer("hola\r\nchao", 10);
-  using frame = fixture.frame;
+test("insert typing, paste, and Ctrl+W form an undo group that redo restores", async () => {
+  await using fixture = await composer("hola\r\nchao", 10);
+  const frame = fixture.frame;
   frame.key("ctrl+w");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["hola\r\n", 6]);
   frame.paste("new");
@@ -194,8 +194,8 @@ test("insert typing, paste, and Ctrl+W form an undo group that redo restores", (
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["hola\r\nnew!", 9]);
 });
 
-test("undo and redo restore image and paste spans with their metadata", () => {
-  const fixture = composer("a\uFFFCbcdefz", 0, [
+test("undo and redo restore image and paste spans with their metadata", async () => {
+  await using fixture = await composer("a\uFFFCbcdefz", 0, [
     {
       from: 1,
       to: 2,
@@ -205,7 +205,7 @@ test("undo and redo restore image and paste spans with their metadata", () => {
     },
     { from: 2, to: 7, kind: "paste", label: "[5 chars]" },
   ]);
-  using frame = fixture.frame;
+  const frame = fixture.frame;
   frame.key("esc l 2 x");
   assertEquals(fixture.editor.state, { text: "az", selection: { anchor: 1, head: 1 }, spans: [] });
   frame.key("u");
@@ -227,9 +227,9 @@ test("undo and redo restore image and paste spans with their metadata", () => {
   assertEquals(fixture.editor.state, { text: "az", selection: { anchor: 1, head: 1 }, spans: [] });
 });
 
-test("reset clears old undo and redo histories without preventing new edits", () => {
-  const fixture = composer("old draft");
-  using frame = fixture.frame;
+test("reset clears old undo and redo histories without preventing new edits", async () => {
+  await using fixture = await composer("old draft");
+  const frame = fixture.frame;
   frame.key("esc d w u");
   assertEquals(fixture.editor.state.text, "old draft");
   fixture.editor.reset({ text: "new draft", selection: { anchor: 0, head: 0 }, spans: [] });
@@ -241,9 +241,9 @@ test("reset clears old undo and redo histories without preventing new edits", ()
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["new draft", 0]);
 });
 
-test("Escape takes ownership before the interrupt keymap and unload restores native keys", () => {
-  const fixture = composer("abc", 3);
-  using frame = fixture.frame;
+test("Escape takes ownership before the interrupt keymap and unload restores native keys", async () => {
+  await using fixture = await composer("abc", 3);
+  const frame = fixture.frame;
   const native = frame.surface("native");
   const actions: string[] = [];
   native.tui.commands.add({
@@ -256,16 +256,16 @@ test("Escape takes ownership before the interrupt keymap and unload restores nat
   frame.key("esc b");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["abc", 0]);
   assertEquals(actions, []);
-  fixture.surface.close();
+  await fixture.host.close();
   frame.key("esc X left");
   assertEquals(actions, ["interrupt"]);
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["Xabc", 0]);
   assertEquals(frame.frame.cursor, { column: 2, row: 1, shape: "bar" });
 });
 
-test("Enter submits normally but completes a pending replacement without submitting", () => {
-  const fixture = composer("abc", 3);
-  using frame = fixture.frame;
+test("Enter submits normally but completes a pending replacement without submitting", async () => {
+  await using fixture = await composer("abc", 3);
+  const frame = fixture.frame;
   frame.key("enter");
   assertEquals(fixture.submitted, [{ text: "abc", selection: { anchor: 3, head: 3 }, spans: [] }]);
   frame.key("esc enter");
@@ -280,9 +280,9 @@ test("Enter submits normally but completes a pending replacement without submitt
   assertEquals(fixture.submitted[2], { text: "\nbc", selection: { anchor: 1, head: 1 }, spans: [] });
 });
 
-test("slash inserts the command prefix without discarding the draft", () => {
-  const fixture = composer("keep this draft", 5);
-  using frame = fixture.frame;
+test("slash inserts the command prefix without discarding the draft", async () => {
+  await using fixture = await composer("keep this draft", 5);
+  const frame = fixture.frame;
   frame.key("esc /");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["keep/ this draft", 5]);
   assertEquals(frame.frame.cursor, { column: 7, row: 1, shape: "bar" });
@@ -290,9 +290,9 @@ test("slash inserts the command prefix without discarding the draft", () => {
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["keep/X this draft", 6]);
 });
 
-test("resize reflows a normal caret without changing the draft or logical motion", () => {
-  const fixture = composer("abcdefghij klmnop");
-  using frame = fixture.frame;
+test("resize reflows a normal caret without changing the draft or logical motion", async () => {
+  await using fixture = await composer("abcdefghij klmnop");
+  const frame = fixture.frame;
   frame.key("esc w");
   assertEquals([fixture.editor.state.text, fixture.editor.caret], ["abcdefghij klmnop", 11]);
   frame.resize({ width: 14, height: 12 });
@@ -302,8 +302,8 @@ test("resize reflows a normal caret without changing the draft or logical motion
   assertEquals(frame.frame.cursor, { column: 2, row: 1, shape: "block" });
 });
 
-test("undo restores image metadata when text and span ranges stay equal", () => {
-  const fixture = composer("\uFFFC", 0, [
+test("undo restores image metadata when text and span ranges stay equal", async () => {
+  await using fixture = await composer("\uFFFC", 0, [
     {
       from: 0,
       to: 1,
@@ -312,7 +312,7 @@ test("undo restores image metadata when text and span ranges stay equal", () => 
       media: { blob: { digest: "first", len: 3 }, mimeType: "image/png" },
     },
   ]);
-  using frame = fixture.frame;
+  const frame = fixture.frame;
   fixture.editor.replace(0, 1, "\uFFFC", [
     {
       from: 0,
@@ -344,19 +344,22 @@ test("undo restores image metadata when text and span ranges stay equal", () => 
   ]);
 });
 
-test("the previous Visual area follows inserted lines but keeps same-line columns", () => {
-  const fixture = composer("top\nabcd");
-  using frame = fixture.frame;
+test("the previous Visual area follows inserted lines", async () => {
+  await using fixture = await composer("top\nabcd");
+  const frame = fixture.frame;
   frame.key("esc j l v l esc g g O X esc g v y");
   assertEquals([fixture.editor.state.text, frame.copies], ["X\ntop\nabcd", ["bc"]]);
   frame.key("u g v y");
   assertEquals([fixture.editor.state.text, frame.copies], ["top\nabcd", ["bc", "bc"]]);
   frame.key("ctrl+r g v y");
   assertEquals([fixture.editor.state.text, frame.copies], ["X\ntop\nabcd", ["bc", "bc", "bc"]]);
-  const sameLine = composer("abcd");
-  using sameFrame = sameLine.frame;
-  sameFrame.key("esc l v l esc 0 i X esc g v y");
-  assertEquals([sameLine.editor.state.text, sameFrame.copies], ["Xabcd", ["ab"]]);
+});
+
+test("the previous Visual area keeps same-line columns", async () => {
+  await using fixture = await composer("abcd");
+  const frame = fixture.frame;
+  frame.key("esc l v l esc 0 i X esc g v y");
+  assertEquals([fixture.editor.state.text, frame.copies], ["Xabcd", ["ab"]]);
 });
 
 for (const key of [
@@ -375,9 +378,9 @@ for (const key of [
   "ctrl+j",
 ]) {
   for (const mode of ["", "v"]) {
-    test(`${mode ? "visual" : "normal"} mode: native editing key ${key} leaves the draft unchanged`, () => {
-      const fixture = composer("abc def");
-      using frame = fixture.frame;
+    test(`${mode ? "visual" : "normal"} mode: native editing key ${key} leaves the draft unchanged`, async () => {
+      await using fixture = await composer("abc def");
+      const frame = fixture.frame;
       frame.key("esc");
       fixture.editor.caret = 4;
       if (mode) frame.key(mode);
@@ -399,9 +402,9 @@ const deletionKeys: readonly [string, string, number, string, string, number][] 
 ];
 
 for (const [behavior, text, caret, keys, expectedText, expectedCaret] of deletionKeys) {
-  test(`normal mode: ${behavior}`, () => {
-    const fixture = composer(text);
-    using frame = fixture.frame;
+  test(`normal mode: ${behavior}`, async () => {
+    await using fixture = await composer(text);
+    const frame = fixture.frame;
     frame.key("esc");
     fixture.editor.caret = caret;
     frame.key(keys);
@@ -409,9 +412,9 @@ for (const [behavior, text, caret, keys, expectedText, expectedCaret] of deletio
   });
 }
 
-test("insert mode keeps native backspace, delete, and word deletion", () => {
-  const fixture = composer("abc def", 4);
-  using frame = fixture.frame;
+test("insert mode keeps native backspace, delete, and word deletion", async () => {
+  await using fixture = await composer("abc def", 4);
+  const frame = fixture.frame;
   frame.key("backspace delete");
   assertEquals(fixture.editor.state.text, "abcef");
   frame.key("alt+backspace");

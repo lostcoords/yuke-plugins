@@ -10,60 +10,60 @@ test("line helpers keep CRLF together and retain empty first and last lines", ()
   assertEquals([lineEnd("last", 1), afterLine("last", 4), firstNonblank(" \t", 0)], [4, 4, 2]);
 });
 
-test("normal carets stay before whole graphemes at a line end", () => {
+const cluster = "a👩‍💻e\u0301🇯🇵\r\nZ";
+
+test("carets stay before whole graphemes at a line end and snap out of joined clusters", () => {
   const navigation = new Navigation();
-  assertEquals([navigation.clamp("a👩‍💻e\u0301🇯🇵\r\nZ", 12), navigation.clamp("a👩‍💻e\u0301🇯🇵\r\nZ", 15)], [8, 14]);
+  const cases: readonly [string, number, number][] = [
+    [cluster, 12, 8],
+    [cluster, 15, 14],
+    ["abc", -4, 0],
+    ["abc", 50, 2],
+    ["\nabc", 0, 0],
+    ["abc\n", 4, 4],
+    ["", 5, 0],
+  ];
   assertEquals(
-    [
-      navigation.clamp("abc", -4),
-      navigation.clamp("abc", 50),
-      navigation.clamp("\nabc", 0),
-      navigation.clamp("abc\n", 4),
-      navigation.clamp("", 5),
-    ],
-    [0, 2, 0, 4, 0],
+    cases.map(([text, at]) => navigation.clamp(text, at)),
+    cases.map(([, , expected]) => expected),
+  );
+  const snaps: readonly [string, number, number][] = [
+    [cluster, 3, 1],
+    [cluster, 7, 6],
+    [cluster, 9, 8],
+    [cluster, 13, 12],
+    ["🇯🇵", 2, 0],
+    ["e\u0301", 1, 0],
+    [cluster, -1, 0],
+    [cluster, 99, 15],
+    ["abc", 1, 1],
+  ];
+  assertEquals(
+    snaps.map(([text, at]) => navigation.snap(text, at)),
+    snaps.map(([, , expected]) => expected),
   );
 });
 
-test("edit carets snap before joined combining emoji flag and CRLF clusters", () => {
+test("navigation steps and distances use UTF-16 offsets of whole graphemes and follow the current text", () => {
   const navigation = new Navigation();
-  const text = "a👩‍💻e\u0301🇯🇵\r\nZ";
   assertEquals(
-    [navigation.snap(text, 3), navigation.snap(text, 7), navigation.snap(text, 9), navigation.snap(text, 13)],
-    [1, 6, 8, 12],
-  );
-  assertEquals(
-    [
-      navigation.snap("🇯🇵", 2),
-      navigation.snap("e\u0301", 1),
-      navigation.snap(text, -1),
-      navigation.snap(text, 99),
-      navigation.snap("abc", 1),
-    ],
-    [0, 0, 0, 15, 1],
-  );
-});
-
-test("navigation steps and distances use UTF-16 offsets of whole graphemes", () => {
-  const navigation = new Navigation();
-  const text = "a👩‍💻e\u0301🇯🇵\r\nZ";
-  assertEquals(
-    [0, 1, 6, 8, 12, 14, 15].map((at) => navigation.next(text, at)),
+    [0, 1, 6, 8, 12, 14, 15].map((at) => navigation.next(cluster, at)),
     [1, 6, 8, 12, 14, 15, 15],
   );
   assertEquals(
-    [15, 14, 12, 8, 6, 1, 0].map((at) => navigation.previous(text, at)),
+    [15, 14, 12, 8, 6, 1, 0].map((at) => navigation.previous(cluster, at)),
     [14, 12, 8, 6, 1, 0, 0],
   );
-  assertEquals([navigation.distance(text, 0, 15), navigation.distance(text, 1, 12)], [6, 3]);
-});
-
-test("segmentation follows the current text after changes", () => {
-  const navigation = new Navigation();
-  assertEquals(navigation.next("a👩‍💻z", 1), 6);
-  assertEquals(navigation.next("ae\u0301z", 1), 3);
-  assertEquals(navigation.previous("a👩‍💻z", 6), 1);
-  assertEquals(navigation.next("", 0), 0);
+  assertEquals([navigation.distance(cluster, 0, 15), navigation.distance(cluster, 1, 12)], [6, 3]);
+  assertEquals(
+    [
+      navigation.next("a👩‍💻z", 1),
+      navigation.next("ae\u0301z", 1),
+      navigation.previous("a👩‍💻z", 6),
+      navigation.next("", 0),
+    ],
+    [6, 3, 1, 0],
+  );
 });
 
 test("word motions keep Indic conjuncts and long combining clusters whole", () => {
@@ -236,207 +236,65 @@ test("paragraphs stop at empty lines rather than lines with spaces", () => {
   assertEquals([navigation.paragraph(text, 14, true, 1), navigation.paragraph(text, 0, false, 1)], [19, 0]);
 });
 
-test("inner and around word objects return half-open operator ranges", () => {
+const range = (from: number, to: number) => ({ from, to, target: from, lines: false, inclusive: false });
+
+test("text objects return half-open operator ranges", () => {
   const navigation = new Navigation();
-  const text = "one  two.three";
-  assertEquals(navigation.object(text, 1, "w", false, 1), {
-    from: 0,
-    to: 3,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object(text, 1, "w", true, 1), { from: 0, to: 5, target: 0, lines: false, inclusive: false });
-  assertEquals(navigation.object(text, 3, "w", false, 1), {
-    from: 3,
-    to: 5,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object(text, 3, "w", true, 1), { from: 3, to: 8, target: 3, lines: false, inclusive: false });
-  assertEquals(navigation.object(text, 6, "W", false, 1), {
-    from: 5,
-    to: 14,
-    target: 5,
-    lines: false,
-    inclusive: false,
-  });
+  const cases: readonly [string, string, number, string, boolean, number, ReturnType<typeof range> | null][] = [
+    ["inner word", "one  two.three", 1, "w", false, 1, range(0, 3)],
+    ["around word", "one  two.three", 1, "w", true, 1, range(0, 5)],
+    ["inner whitespace", "one  two.three", 3, "w", false, 1, range(3, 5)],
+    ["around whitespace", "one  two.three", 3, "w", true, 1, range(3, 8)],
+    ["inner WORD", "one  two.three", 6, "W", false, 1, range(5, 14)],
+    ["around uses preceding spaces at line end", "one two", 5, "w", true, 1, range(3, 7)],
+    ["around keeps indentation", "  one", 3, "w", true, 1, range(2, 5)],
+    ["inner trailing spaces", "one  ", 3, "w", false, 1, range(3, 5)],
+    ["around trailing spaces without a word", "one  ", 3, "w", true, 1, null],
+    ["a word count beyond the text", "one", 0, "w", false, 2, null],
+    ["inner quotes find the next pair", 'x "one"  y', 0, '"', false, 1, range(3, 6)],
+    ["around quotes include surrounding blanks", 'x "one"  y', 4, '"', true, 1, range(2, 9)],
+    ["counted inner quotes include the quotes", 'x "one"  y', 4, '"', false, 2, range(2, 7)],
+    ["escaped quotes do not close a pair", "'a\\'b'", 2, "'", false, 1, range(1, 5)],
+    ["quotes do not cross a line", 'x\n"one"', 0, '"', false, 1, null],
+    ["inner nested bracket", "(a(b)c)", 3, "b", false, 1, range(3, 4)],
+    ["counted bracket", "(a(b)c)", 3, ")", false, 2, range(1, 6)],
+    ["counted around bracket", "(a(b)c)", 3, "(", true, 2, range(0, 7)],
+    ["bracket pair after the caret", "x (a)", 0, "(", false, 1, range(3, 4)],
+    ["bracket count beyond the nesting", "(a)", 1, "(", false, 2, null],
+    ["unknown object kind", "(a)", 1, "?", false, 1, null],
+    ["multiline inner bracket", "(\r\n  x\r\n  )", 5, "(", false, 1, range(3, 6)],
+    ["multiline around bracket", "(\r\n  x\r\n  )", 5, "(", true, 1, range(0, 11)],
+    ["multiline inner brace", "{\n  x\n}", 4, "B", false, 1, range(2, 5)],
+  ];
+  assertEquals(
+    cases.map(([behavior, text, at, kind, around, count]) => [
+      behavior,
+      navigation.object(text, at, kind, around, count),
+    ]),
+    cases.map(([behavior, , , , , , expected]) => [behavior, expected]),
+  );
 });
 
-test("counted word objects include the intervening whitespace as a step", () => {
+test("counted word objects include the intervening whitespace and line ending as steps", () => {
   const navigation = new Navigation();
-  assertEquals(navigation.wordObject("one  two.three", 1, false, 2, false), {
-    from: 0,
-    to: 5,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.wordObject("one  two.three", 1, true, 2, false), {
-    from: 0,
-    to: 8,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.wordObject("e\u0301 👩‍💻", 3, false, 1, false), {
-    from: 3,
-    to: 8,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
+  const cases: readonly [string, number, boolean, number, ReturnType<typeof range>][] = [
+    ["one  two.three", 1, false, 2, range(0, 5)],
+    ["one  two.three", 1, true, 2, range(0, 8)],
+    ["e\u0301 👩‍💻", 3, false, 1, range(3, 8)],
+    ["one\r\ntwo", 0, false, 2, range(0, 8)],
+    ["one\r\n\r\ntwo", 0, false, 2, range(0, 7)],
+    ["one\n\ntwo", 4, false, 1, range(4, 4)],
+  ];
+  assertEquals(
+    cases.map(([text, at, around, count]) => navigation.wordObject(text, at, around, count, false)),
+    cases.map(([, , , , expected]) => expected),
+  );
 });
 
-test("around words use preceding spaces at line end without consuming indentation", () => {
+test("a failed object reports the last normal caret", () => {
   const navigation = new Navigation();
-  assertEquals(navigation.object("one two", 5, "w", true, 1), {
-    from: 3,
-    to: 7,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("  one", 3, "w", true, 1), {
-    from: 2,
-    to: 5,
-    target: 2,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("one  ", 3, "w", false, 1), {
-    from: 3,
-    to: 5,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("one  ", 3, "w", true, 1), null);
-  assertEquals(navigation.failureTarget, 4);
-});
-
-test("an excessive word object count reports the last normal caret", () => {
-  const navigation = new Navigation();
-  assertEquals(navigation.object("one", 0, "w", false, 1), {
-    from: 0,
-    to: 3,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
   assertEquals(navigation.object("one", 0, "w", false, 2), null);
   assertEquals(navigation.failureTarget, 2);
-});
-
-test("quote objects find the next pair and include surrounding blanks only for around", () => {
-  const navigation = new Navigation();
-  const text = 'x "one"  y';
-  assertEquals(navigation.object(text, 0, '"', false, 1), {
-    from: 3,
-    to: 6,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object(text, 4, '"', true, 1), { from: 2, to: 9, target: 2, lines: false, inclusive: false });
-  assertEquals(navigation.object(text, 4, '"', false, 2), {
-    from: 2,
-    to: 7,
-    target: 2,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("'a\\'b'", 2, "'", false, 1), {
-    from: 1,
-    to: 5,
-    target: 1,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object('x\n"one"', 0, '"', false, 1), null);
-});
-
-test("nested bracket objects expand by count and can select the next pair", () => {
-  const navigation = new Navigation();
-  assertEquals(navigation.object("(a(b)c)", 3, "b", false, 1), {
-    from: 3,
-    to: 4,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("(a(b)c)", 3, ")", false, 2), {
-    from: 1,
-    to: 6,
-    target: 1,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("(a(b)c)", 3, "(", true, 2), {
-    from: 0,
-    to: 7,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("x (a)", 0, "(", false, 1), {
-    from: 3,
-    to: 4,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("(a)", 1, "(", false, 2), null);
-  assertEquals(navigation.object("(a)", 1, "?", false, 1), null);
-});
-
-test("multiline bracket interiors omit the opening break and the closing line indentation", () => {
-  const navigation = new Navigation();
-  assertEquals(navigation.object("(\r\n  x\r\n  )", 5, "(", false, 1), {
-    from: 3,
-    to: 6,
-    target: 3,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("(\r\n  x\r\n  )", 5, "(", true, 1), {
-    from: 0,
-    to: 11,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.object("{\n  x\n}", 4, "B", false, 1), {
-    from: 2,
-    to: 5,
-    target: 2,
-    lines: false,
-    inclusive: false,
-  });
-});
-
-test("counted word objects skip a nonempty line ending as one whole CRLF", () => {
-  const navigation = new Navigation();
-  assertEquals(navigation.wordObject("one\r\ntwo", 0, false, 2, false), {
-    from: 0,
-    to: 8,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.wordObject("one\r\n\r\ntwo", 0, false, 2, false), {
-    from: 0,
-    to: 7,
-    target: 0,
-    lines: false,
-    inclusive: false,
-  });
-  assertEquals(navigation.wordObject("one\n\ntwo", 4, false, 1, false), {
-    from: 4,
-    to: 4,
-    target: 4,
-    lines: false,
-    inclusive: false,
-  });
+  assertEquals(navigation.object("one  ", 3, "w", true, 1), null);
+  assertEquals(navigation.failureTarget, 4);
 });

@@ -1,9 +1,9 @@
-import type { PluginContext } from "yuke:plugins";
-import { assert, createFrame } from "yuke:test";
+import { createFrame, createHost } from "yuke:test";
 import { type EditorSpan, type EditorState, TextEditor, type View } from "yuke:tui";
 import { apply } from "../src/index.ts";
 
-export function harness(editors: readonly TextEditor[]) {
+/** Load the plugin in a host over a frame that lays out `editors`. `await using` closes the host, then the frame. */
+export async function harness(editors: readonly TextEditor[]) {
   const root: View = {
     draw() {},
     initialFocus: editors[0],
@@ -14,20 +14,21 @@ export function harness(editors: readonly TextEditor[]) {
       })),
   };
   const frame = createFrame({ width: 48, height: 12 }, () => root);
-  const surface = frame.surface("vim");
-  apply({
-    get: (name: string) => {
-      assert(name === "tui", `Unexpected service: ${name}`);
-      return surface.tui;
-    },
-    signal: surface.signal,
-    notify() {},
-  } as unknown as PluginContext);
+  const host = await createHost({ frame, plugins: [{ name: "vim", apply }] });
+  const surface = frame.surface("test");
   frame.draw();
-  return { frame, surface };
+  return {
+    frame,
+    host,
+    surface,
+    async [Symbol.asyncDispose]() {
+      await host.close();
+      frame[Symbol.dispose]();
+    },
+  };
 }
 
-export function composer(text = "", caret = 0, spans: readonly EditorSpan[] = []) {
+export async function composer(text = "", caret = 0, spans: readonly EditorSpan[] = []) {
   const submitted: EditorState[] = [];
   const editor = new TextEditor({
     role: "composer",
@@ -35,5 +36,6 @@ export function composer(text = "", caret = 0, spans: readonly EditorSpan[] = []
     state: { text, selection: { anchor: caret, head: caret }, spans },
     onSubmit: (state) => submitted.push(state),
   });
-  return { ...harness([editor]), editor, submitted };
+  const fixture = await harness([editor]);
+  return Object.assign(fixture, { editor, submitted });
 }
