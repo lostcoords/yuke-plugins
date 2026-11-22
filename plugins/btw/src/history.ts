@@ -2,7 +2,6 @@ import { type DirEntry, FileSystemError, mkdir, readDir, readTextFile, remove, w
 import type { ModelReference } from "yuke:protocol";
 
 export interface HistoryEntry {
-  version: 1;
   id: string;
   sessionId: string;
   createdAt: number;
@@ -11,26 +10,27 @@ export interface HistoryEntry {
   answer: string;
 }
 
-const isSafeId = (value: string): boolean => /^[a-zA-Z0-9_-]+$/.test(value);
-const isMissing = (error: unknown): boolean => error instanceof FileSystemError && error.code === "ENOENT";
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+/** The files of a folder, or none when the folder does not exist yet. */
+async function readFolder(folder: string): Promise<DirEntry[]> {
+  try {
+    return await Array.fromAsync(readDir(folder));
+  } catch (error) {
+    if (error instanceof FileSystemError && error.code === "ENOENT") return [];
+    throw error;
+  }
+}
 
+/** A record on disk can be damaged by hand or by a crash, so check the fields that the UI reads. */
 function isHistoryEntry(value: unknown): value is HistoryEntry {
+  const entry = value as Partial<HistoryEntry> | null;
   return (
-    isObject(value) &&
-    value.version === 1 &&
-    typeof value.id === "string" &&
-    isSafeId(value.id) &&
-    typeof value.sessionId === "string" &&
-    isSafeId(value.sessionId) &&
-    typeof value.createdAt === "number" &&
-    value.createdAt >= 0 &&
-    !Number.isNaN(new Date(value.createdAt).getTime()) &&
-    typeof value.question === "string" &&
-    typeof value.answer === "string" &&
-    isObject(value.model) &&
-    typeof value.model.provider === "string" &&
-    typeof value.model.model === "string"
+    typeof entry?.id === "string" &&
+    typeof entry.sessionId === "string" &&
+    typeof entry.createdAt === "number" &&
+    typeof entry.question === "string" &&
+    typeof entry.answer === "string" &&
+    typeof entry.model?.provider === "string" &&
+    typeof entry.model.model === "string"
   );
 }
 
@@ -42,16 +42,9 @@ export class History {
     this.dataDir = dataDir;
   }
 
-  async save(input: Omit<HistoryEntry, "version" | "id" | "createdAt">): Promise<HistoryEntry> {
-    if (!isSafeId(input.sessionId)) throw new Error("Invalid history session ID.");
-
+  async save(input: Omit<HistoryEntry, "id" | "createdAt">): Promise<HistoryEntry> {
     const createdAt = Date.now();
-    const saved: HistoryEntry = {
-      ...input,
-      version: 1,
-      id: `${createdAt}-${Math.random().toString(36).slice(2)}`,
-      createdAt,
-    };
+    const saved: HistoryEntry = { ...input, id: `${createdAt}-${Math.random().toString(36).slice(2)}`, createdAt };
     const baseDir = `${this.dataDir}/history/${saved.sessionId}`;
 
     await mkdir(baseDir, { recursive: true, mode: 0o700 });
@@ -65,48 +58,26 @@ export class History {
   }
 
   async list(sessionId?: string): Promise<{ entries: HistoryEntry[]; warnings: string[] }> {
-    if (sessionId !== undefined && !isSafeId(sessionId)) throw new Error("Invalid history session ID.");
-
     const entries: HistoryEntry[] = [];
     const warnings: string[] = [];
     const root = `${this.dataDir}/history`;
-    let sessionIds: string[];
-
-    try {
-      sessionIds =
-        sessionId === undefined
-          ? (await Array.fromAsync(readDir(root)))
-              .filter((item) => item.isDirectory && isSafeId(item.name))
-              .map((item) => item.name)
-          : [sessionId];
-    } catch (error) {
-      if (isMissing(error)) return { entries, warnings };
-      throw error;
-    }
+    const sessionIds =
+      sessionId === undefined
+        ? (await readFolder(root)).filter((item) => item.isDirectory).map((item) => item.name)
+        : [sessionId];
 
     for (const currentSessionId of sessionIds) {
       const baseDir = `${root}/${currentSessionId}`;
-      let files: DirEntry[];
 
-      try {
-        files = await Array.fromAsync(readDir(baseDir));
-      } catch (error) {
-        if (isMissing(error)) continue;
-        throw error;
-      }
-
-      for (const file of files) {
-        if (!file.isFile || !/^[a-zA-Z0-9_-]+\.json$/.test(file.name)) continue;
+      for (const file of await readFolder(baseDir)) {
+        if (!file.name.endsWith(".json")) continue;
 
         try {
           const value: unknown = JSON.parse(await readTextFile(file.name, { folder: baseDir, fatal: true }));
-          if (!isHistoryEntry(value) || value.sessionId !== currentSessionId || `${value.id}.json` !== file.name) {
-            throw new Error("Invalid or unsupported history record.");
-          }
+          if (!isHistoryEntry(value)) throw new Error("Not a history record.");
 
           entries.push(value);
         } catch (error) {
-          if (isMissing(error)) continue;
           warnings.push(`${currentSessionId}/${file.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -117,8 +88,6 @@ export class History {
   }
 
   async remove(saved: HistoryEntry): Promise<void> {
-    if (!isSafeId(saved.sessionId) || !isSafeId(saved.id)) throw new Error("Invalid history record ID.");
-
     await remove(`history/${saved.sessionId}/${saved.id}.json`, { folder: this.dataDir, force: true });
   }
 }

@@ -4,21 +4,33 @@ import type { ModelReference } from "yuke:protocol";
 
 export const NO_ROUND = "Send a message in the main conversation before using /btw.";
 
-type CachedRound = {
-  request: RoundBeforeEvent["sideRequest"];
-  signal: AbortSignal;
-  model: ModelReference;
-};
+/** The latest round of a session: the model it used, and a way to ask beside it. */
+export interface Round {
+  readonly sessionId: string;
+  readonly model: ModelReference;
+  /** Ask `question` against the round without changing its prompt, tools, settings, or context. */
+  readonly ask: (question: string, signal: AbortSignal) => Promise<TextAnswer>;
+}
 
 // Keep one native snapshot per session, not a reconstructed prompt or the turn's cancellation signal.
-const rounds = new Map<string, CachedRound>();
+const rounds = new Map<string, Round>();
 
 export function session(context: SessionContext): () => void {
   const remember = (event: RoundBeforeEvent): undefined => {
-    rounds.set(context.sessionId, {
-      request: event.sideRequest,
-      signal: context.signal,
+    const sessionId = context.sessionId;
+    rounds.set(sessionId, {
+      sessionId,
       model: context.settings.model,
+      ask: (question, signal) =>
+        event.sideRequest({
+          prompt: [
+            "This is a separate side question about the conversation above. The main task continues independently.",
+            "Answer only this question. Do not continue the main task. Do not call tools or change files.",
+            "",
+            question,
+          ].join("\n"),
+          signal: AbortSignal.any([signal, context.signal]),
+        }),
     });
   };
 
@@ -30,26 +42,7 @@ export function session(context: SessionContext): () => void {
   };
 }
 
-/** Ask against the latest round without changing its prompt, tools, settings, or context. */
-export async function ask(sessionId: string, question: string, signal: AbortSignal): Promise<TextAnswer> {
-  const round = rounds.get(sessionId);
-  if (round === undefined) throw new Error(NO_ROUND);
-
-  const prompt = question.trim();
-  if (prompt === "") throw new Error("Enter a side question.");
-
-  return round.request({
-    prompt: [
-      "This is a separate side question about the conversation above. The main task continues independently.",
-      "Answer only this question. Do not continue the main task. Do not call tools or change files.",
-      "",
-      prompt,
-    ].join("\n"),
-    signal: AbortSignal.any([signal, round.signal]),
-  });
-}
-
-/** Read only the metadata needed by the UI; the native request stays owned here. */
-export function cachedModel(sessionId: string | undefined): ModelReference | undefined {
-  return sessionId === undefined ? undefined : rounds.get(sessionId)?.model;
+/** The latest round of the session `sessionId`, or `undefined` before the first round of the session. */
+export function latestRound(sessionId: string | undefined): Round | undefined {
+  return sessionId === undefined ? undefined : rounds.get(sessionId);
 }

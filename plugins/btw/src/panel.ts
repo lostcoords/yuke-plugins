@@ -1,24 +1,36 @@
 import type { TextAnswer } from "yuke:ai";
 import type { PluginContext } from "yuke:plugins";
-import { Markdown, strokeOf, TextEditor, type TextRow, TextView, type Tui, type View, wrap } from "yuke:tui";
+import {
+  Markdown,
+  SPINNER_INTERVAL,
+  spinner,
+  strokeOf,
+  TextEditor,
+  type TextRow,
+  TextView,
+  type Tui,
+  type View,
+  wrap,
+} from "yuke:tui";
 
 import type { History, HistoryEntry } from "./history.ts";
 import { browseHistory } from "./history-ui.ts";
-import { ask, cachedModel, NO_ROUND } from "./requests.ts";
+import { latestRound, NO_ROUND, type Round } from "./requests.ts";
 import { panelRect, panelView } from "./style.ts";
-
-const SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 
 type Answer = { kind: "ready" } | { kind: "running"; started: number } | { kind: "done"; text: string };
 
-/** The modal only takes terminal input. The main turn keeps running underneath it. */
+/**
+ * Open the panel. The modal only takes terminal input. The main turn keeps running underneath it.
+ * Give `false`, with no panel, when the question of `initial` has no main round to ask against.
+ */
 export function openPanel(
   ctx: PluginContext,
   tui: Tui,
   history: History,
   sessionId: string | undefined,
   initial: string | HistoryEntry = "",
-): void {
+): boolean {
   let answer: Answer = { kind: "ready" };
   let revision = 0;
   let inputRect = { column: 2, row: 0, width: 0, height: 1 };
@@ -61,22 +73,24 @@ export function openPanel(
     showExchange(entry.question, entry.answer);
   };
 
-  const sendQuestion = async (question: string): Promise<void> => {
-    if (question === "" || answer.kind === "running") return;
-
-    const model = cachedModel(sessionId);
-    if (sessionId === undefined || model === undefined) {
+  const send = (question: string): boolean => {
+    const round = latestRound(sessionId);
+    if (round === undefined) {
       ctx.notify("info", NO_ROUND);
-      return;
+      return false;
     }
 
     answer = { kind: "running", started: tui.now() };
     editor.reset({ text: "", spans: [], selection: { anchor: 0, head: 0 } });
     showExchange(question);
+    void run(round, question);
+    return true;
+  };
 
+  const run = async (round: Round, question: string): Promise<void> => {
     let result: TextAnswer;
     try {
-      result = await ask(sessionId, question, overlay.signal);
+      result = await round.ask(question, overlay.signal);
     } catch (error) {
       if (overlay.signal.aborted) return;
 
@@ -94,7 +108,7 @@ export function openPanel(
         : `${text}\n\n[Response ended: ${result.finishReason}. No tool was executed.]`;
 
     try {
-      await history.save({ sessionId, model, question, answer: displayText });
+      await history.save({ sessionId: round.sessionId, model: round.model, question, answer: displayText });
     } catch (error) {
       if (!ctx.signal.aborted) ctx.notify("error", `The side answer was not saved: ${String(error)}`);
     }
@@ -111,7 +125,8 @@ export function openPanel(
     appearance: { prompt: "› ", promptStyle: { dim: true } },
     multiline: true,
     onSubmit: (draft) => {
-      void sendQuestion(draft.text.trim());
+      const question = draft.text.trim();
+      if (question !== "" && answer.kind !== "running") send(question);
     },
   });
 
@@ -144,9 +159,8 @@ export function openPanel(
 
       if (answer.kind === "running") {
         const elapsed = tui.now() - answer.started;
-        const status = `${SPINNER[Math.floor(elapsed / 80) % SPINNER.length]} Working… ${Math.floor(elapsed / 1000)}s`;
-        canvas.text(1, inputRect.row - 2, status, "btw.working");
-        tui.requestFrame(80);
+        canvas.text(1, inputRect.row - 2, `${spinner(elapsed)} Working… ${Math.floor(elapsed / 1000)}s`, "btw.working");
+        tui.requestFrame(SPINNER_INTERVAL);
       }
 
       let hints = answer.kind === "running" ? "Esc cancel" : "Enter send · Esc close";
@@ -222,8 +236,14 @@ export function openPanel(
   };
 
   if (typeof initial !== "string") showSaved(initial);
-  else if (initial !== "") void sendQuestion(initial);
-  else void restoreLatest();
+  else if (initial !== "") {
+    if (!send(initial)) {
+      overlay.close();
+      return false;
+    }
+  } else void restoreLatest();
+
+  return true;
 }
 
 /** Wrap the heading with source mappings intact, accenting only the command, not the question. */
