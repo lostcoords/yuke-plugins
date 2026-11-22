@@ -23,18 +23,11 @@ export class RunLog {
   /** The runs of `parent` in the file. A missing file has none. */
   async read(parent: SessionId): Promise<readonly LoggedRun[]> {
     try {
-      const runs: unknown = JSON.parse(await readTextFile(`${parent}.json`, { folder: this.#folder, fatal: true }));
-      if (!Array.isArray(runs)) throw new Error("the log of running subagents is not a list");
-      return runs as readonly LoggedRun[];
+      return JSON.parse(await readTextFile(`${parent}.json`, { folder: this.#folder })) as readonly LoggedRun[];
     } catch (error) {
       if (error instanceof FileSystemError && error.code === "ENOENT") return [];
       throw error;
     }
-  }
-
-  /** Delete the log of `parent`. */
-  async clear(parent: SessionId): Promise<void> {
-    await remove(`${this.#folder}/${parent}.json`).catch(ignoreMissing);
   }
 
   async add(parent: SessionId, run: LoggedRun): Promise<void> {
@@ -50,14 +43,14 @@ export class RunLog {
       .catch(() => undefined)
       .then(async () => {
         const runs = change(await this.read(parent));
+        if (runs.length === 0) {
+          await remove(`${this.#folder}/${parent}.json`, { force: true });
+          return;
+        }
         await mkdir(this.#folder, { recursive: true, mode: 0o700 });
-        if (runs.length === 0) await remove(`${this.#folder}/${parent}.json`).catch(ignoreMissing);
-        else await writeTextFile(`${parent}.json`, JSON.stringify(runs), { folder: this.#folder });
+        // An atomic write leaves a reader the old file or the new one, so a kill cannot damage the log.
+        await writeTextFile(`${parent}.json`, JSON.stringify(runs), { folder: this.#folder, atomic: true });
       });
     return this.#writes;
   }
-}
-
-function ignoreMissing(error: unknown): void {
-  if (!(error instanceof FileSystemError && error.code === "ENOENT")) throw error;
 }

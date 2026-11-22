@@ -4,7 +4,7 @@ import type { ToolContext, ToolExecuteResult } from "yuke:tools";
 import type { Tui } from "yuke:tui";
 import type { ListEntry } from "./list.ts";
 import { ModelList, modelId, resolveModel } from "./models.ts";
-import { type LoggedRun, RunLog } from "./run-log.ts";
+import { RunLog } from "./run-log.ts";
 import { installUi } from "./ui.ts";
 
 const SPAWN_DESCRIPTION = `Start a subagent: a new agent with its own context, the same tools, and the same folder as you. It cannot start subagents.
@@ -50,8 +50,10 @@ const REPORT_EVENTS = 16;
 /** A subagent whose job runs. */
 interface Running extends ListEntry {
   readonly handle: SessionHandle;
+  /** The parent session. */
+  readonly parentId: SessionId;
   /** The open parent, which also stops the job. */
-  readonly parent: SessionHandle;
+  readonly parentHandle: SessionHandle;
   /** The inputs of the job. */
   readonly inputs: InputId[];
 }
@@ -61,8 +63,8 @@ let sessions: Sessions;
 /** The terminal interface, or `undefined` in `yuke --rpc` and `yuke -p`. */
 let tui: Tui | undefined;
 
-/** The running subagents of each parent session. A follow-up during a run needs the open session of that run. */
-const runs = new Map<SessionId, Map<SessionId, Running>>();
+/** The running subagents by their ids, oldest first. A follow-up during a run needs the open session of that run. */
+const runs = new Map<SessionId, Running>();
 
 /** Each subagent that this process knows. It stays after a close, because a pane can still show that subagent. */
 const subagents = new Map<SessionId, { readonly parent: SessionId; readonly label: string | undefined }>();
@@ -97,15 +99,17 @@ export function apply(ctx: PluginContext): undefined {
   if (tui === undefined) return;
   redraw = installUi(ctx, tui, models, {
     running: (parent) =>
-      [...(runs.get(parent)?.entries() ?? [])].map(([id, run]) => ({
-        id,
-        label: run.label,
-        model: run.model,
-        started: run.started,
-        stop: () => run.parent.stopJob(id),
-      })),
+      [...runs.entries()]
+        .filter(([, run]) => run.parentId === parent)
+        .map(([id, run]) => ({
+          id,
+          label: run.label,
+          model: run.model,
+          started: run.started,
+          stop: () => run.parentHandle.stopJob(id),
+        })),
     busy: (parent) => busy.has(parent),
-    anyRunning: () => [...runs.values()].some((running) => running.size > 0),
+    anyRunning: () => runs.size > 0,
     readOnly: (session) => {
       const subagent = subagents.get(session);
       if (subagent === undefined) return undefined;
@@ -125,12 +129,7 @@ export async function session(s: SessionContext): Promise<undefined> {
   // The tool text is fixed for the session, so the prompt cache holds. A new list reaches the next session.
   const ids = await readyIds(s);
   await tellInterrupted(s);
-  const running = new Map<SessionId, Running>();
-  runs.set(s.sessionId, running);
-  s.signal.addEventListener("abort", () => {
-    runs.delete(s.sessionId);
-    busy.delete(s.sessionId);
-  });
+  s.signal.addEventListener("abort", () => busy.delete(s.sessionId));
 
   s.tools.add({
     name: "spawn_subagent",
@@ -150,9 +149,10 @@ export async function session(s: SessionContext): Promise<undefined> {
     },
     hints: { title: "Subagent", subject: { argument: "description", kind: "text" } },
     async execute(args, context) {
+      // The schema has `model` only when the list of models is not empty, so the type of `args` lacks it.
       const settings = await settingsOf(s, (args as { readonly model?: string }).model);
       const id = await sessions.create(settings, { parent: s.sessionId });
-      return run(s, context, running, id, args.description, args.message, args.background, settings.model.model);
+      return run(s, context, id, args.description, args.message, args.background, settings.model.model);
     },
   });
 
@@ -175,11 +175,11 @@ export async function session(s: SessionContext): Promise<undefined> {
       if (row?.parent !== s.sessionId) {
         throw new Error(`The id ${args.id} names no subagent of this session.`);
       }
-      const active = running.get(args.id);
+      const active = runs.get(args.id);
       if (active === undefined) {
         // A subagent of an earlier process has no label here, so its message names it.
         const label = subagents.get(args.id)?.label ?? args.message;
-        return run(s, context, running, args.id, label, args.message, args.background, row.model.model);
+        return run(s, context, args.id, label, args.message, args.background, row.model.model);
       }
       active.inputs.push(await active.handle.sendMessage({ content: [{ kind: "userText", text: args.message }] }));
       return {
@@ -195,15 +195,7 @@ export async function session(s: SessionContext): Promise<undefined> {
  * next input. A wake of the model would spend tokens when the user only opens an old session.
  */
 async function tellInterrupted(s: SessionContext): Promise<void> {
-  let lost: readonly LoggedRun[];
-  try {
-    lost = await log.read(s.sessionId);
-  } catch (error) {
-    // A kill during a write can damage the file. The file goes, so the next open does not repeat this error.
-    s.notify("error", `the running subagents did not load: ${String(error)}`);
-    await log.clear(s.sessionId);
-    return;
-  }
+  const lost = await log.read(s.sessionId);
   if (lost.length === 0) return;
   for (const run of lost) s.notify("warn", `${run.label} · interrupted`);
   const remove = s.addHook("input.before", async (event) => {
@@ -265,7 +257,6 @@ async function settingsOf(s: SessionContext, chosen: string | undefined): Promis
 async function run(
   s: SessionContext,
   context: ToolContext,
-  running: Map<SessionId, Running>,
   id: SessionId,
   label: string,
   message: string,
@@ -274,7 +265,7 @@ async function run(
 ): Promise<ToolExecuteResult> {
   subagents.set(id, { parent: s.sessionId, label });
   const job = { id, label, background };
-  const outcome = await context.jobs.run(job, (signal) => work(s, running, id, label, model, message, signal));
+  const outcome = await context.jobs.run(job, (signal) => work(s, id, label, model, message, signal));
   if (outcome.kind === "background") {
     return {
       text: `Subagent ${id} runs in the background. ${WAIT_RULE}\n${LEAVE_RULE}`,
@@ -328,7 +319,6 @@ function releaseParent(parent: SessionId, view: ParentView): void {
 /** Send `message` to the subagent `id`, wait for its end, and give its report. The host drops the report after a stop. */
 async function work(
   s: SessionContext,
-  running: Map<SessionId, Running>,
   id: SessionId,
   label: string,
   model: string,
@@ -360,13 +350,14 @@ async function work(
     const before = (await sessions.events(id, { limit: 1 })).at(-1)?.seq ?? 0;
     const active: Running = {
       handle,
-      parent,
+      parentId: s.sessionId,
+      parentHandle: parent,
       inputs: [await handle.sendMessage({ content: [{ kind: "userText", text: message }] })],
       label,
       model,
       started: tui?.now() ?? 0,
     };
-    running.set(id, active);
+    runs.set(id, active);
     await log.add(s.sessionId, { id, label });
     redraw();
     // A stop can come during the waits above, and an abort event does not fire again.
@@ -375,7 +366,7 @@ async function work(
     await handle.waitForIdle();
     return await reportOf(id, before);
   } finally {
-    running.delete(id);
+    runs.delete(id);
     redraw();
     releaseParent(s.sessionId, view);
     ended.abort();
@@ -406,11 +397,11 @@ async function reportOf(id: SessionId, before: number): Promise<JobReport> {
     commit.blocks.flatMap((block) => (block.kind === "assistantText" ? [block.text] : [])).join(""),
   );
   const text = texts.findLast((candidate) => candidate !== "") ?? "";
-  if (failure !== undefined) return { status: "failed", text: text === "" ? failure : `${failure}\n${text}` };
+  const withNote = (note: string): string => (text === "" ? note : `${note}\n${text}`);
+  if (failure !== undefined) return { status: "failed", text: withNote(failure) };
   // A stop drops this report, so it reaches the parent only after a cancel with no stop. A quit can do that.
   if (end?.kind === "cancelled") {
-    const note = "A cancel ended the subagent before it finished.";
-    return { status: "cancelled", text: text === "" ? note : `${note}\n${text}` };
+    return { status: "cancelled", text: withNote("A cancel ended the subagent before it finished.") };
   }
   return { status: "completed", text: text === "" ? "The subagent ended without a final message." : text };
 }

@@ -521,18 +521,6 @@ test("a run from an earlier process gives a notice now, and the model reads it o
   assertEquals(host.requests[1]?.messages.at(-1)?.text, "And now?");
 });
 
-test("a damaged log gives one notice, and the file goes", async () => {
-  const notices: string[] = [];
-  const state = await opened([], { notice: (text) => notices.push(text), runs: {} as never });
-  const { host, parent, dataDir } = state;
-  await using _host = host;
-  await waitForSettled();
-
-  assertEquals(notices.length, 1);
-  assertEquals(notices[0]?.includes("not a list"), true);
-  assertEquals(await logged(dataDir(), parent.id), []);
-});
-
 test("a subagent gets the prompt section and no subagent tools, and the parent gets the tools and no section", async () => {
   const { host, parent } = await opened([reply.text("Two tables."), reply.text("Thanks.")]);
   await using _host = host;
