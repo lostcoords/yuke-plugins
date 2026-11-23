@@ -1,0 +1,11 @@
+{
+  "name": "shell",
+  "version": "0.1.0",
+  "description": "!command runs a command of the user and saves its output in the session. The tool sudo_command runs an approved root command.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"]
+    }
+  }
+}
