@@ -5,7 +5,8 @@
   "extensions": {
     "sh.yuke": {
       "entry": "src/index.ts",
-      "uses": ["chat"]
+      "uses": ["chat"],
+      "optionalUses": ["dashboard"]
     }
   }
 }

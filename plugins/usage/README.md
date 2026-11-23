@@ -17,3 +17,5 @@ sessions that changed.
 The cost uses the prices of the model catalog. An answer counts as unpriced when its model has no price for a token
 kind that it used. The plugin reads each session through the session API, so the first open of a large store can take
 some seconds.
+
+With the plugin `dashboard`, the start screen shows `u` for `/usage`.

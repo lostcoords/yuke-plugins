@@ -8,6 +8,15 @@ import type { SessionRow, StoredEvent } from "yuke:protocol";
 import { Markdown, Picker, stack, TextView } from "yuke:tui";
 import { addTotals, emptyTotals, type Prices, type SessionUsage, type ToolCount, type Totals, tally } from "./tally.ts";
 
+declare module "yuke:plugins" {
+  interface Services {
+    /** The menu of the start screen of the plugin `dashboard`. */
+    readonly dashboard: {
+      readonly addItem: (item: { readonly key: string; readonly label: string; readonly command: string }) => () => void;
+    };
+  }
+}
+
 /** A page of saved events. */
 const EVENTS_PAGE = 500;
 const TABS = ["Overview", "Periods", "Models", "Tools", "Chats"] as const;
@@ -94,6 +103,7 @@ export function apply(ctx: PluginContext): undefined {
       await show(folder);
     },
   });
+  ctx.find("dashboard")?.addItem({ key: "u", label: "Usage", command: "usage:open" });
 
   const show = async (folder: string): Promise<void> => {
     let tab = 0;
