@@ -1,0 +1,11 @@
+{
+  "name": "skills",
+  "version": "0.1.0",
+  "description": "Load a skill by name: $name in a message gives the model its SKILL.md, and $ completes skill names.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"]
+    }
+  }
+}
