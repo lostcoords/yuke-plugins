@@ -1,0 +1,11 @@
+{
+  "name": "questions",
+  "version": "0.1.0",
+  "description": "Questions from the agent that wait for you while it works on: answer them with /questions.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"]
+    }
+  }
+}
