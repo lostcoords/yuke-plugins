@@ -12,7 +12,7 @@ Run `/reload` while idle.
 
 ## Usage
 
-The composer starts in Insert mode. Press **Esc** or **Ctrl+[** for Normal mode. The status bar shows the current mode.
+The composer starts in Insert mode. Press **Esc**, **Ctrl+[**, or **Ctrl+C** for Normal mode. The status bar shows the current mode. As in Vim, **Ctrl+C** also leaves Visual mode and cancels a pending command. In Normal mode with nothing pending, **Ctrl+C** goes to Yuke: it clears the draft, stops the turn, or quits.
 
 | Action | Keys |
 | --- | --- |

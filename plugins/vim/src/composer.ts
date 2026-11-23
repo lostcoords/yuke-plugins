@@ -1145,7 +1145,11 @@ export class ComposerEditor {
       editor.rows.point(editor.caret)?.row === editor.rows.count - 1
     )
       return false;
-    if (stroke === "esc" || stroke === "ctrl+[") {
+    // As in Vim, ctrl+c leaves Insert or Visual mode and cancels a pending command. In idle Normal mode, it goes to
+    // yuke, which clears the draft, stops the turn, or quits.
+    const pending = state.count !== 0 || state.leading !== 0 || state.operator !== "";
+    const cancels = stroke === "ctrl+c" && (state.mode !== "normal" || pending);
+    if (stroke === "esc" || stroke === "ctrl+[" || cancels) {
       if (state.mode === "insert") {
         this.finishInsert(editor, state, true);
         state.mode = "normal";
