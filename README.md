@@ -10,6 +10,7 @@ Small, independent plugins for [Yuke](https://github.com/lostcoords/yuke).
 | [mailbox](plugins/mailbox) | Direct messages between open Yuke sessions on the same machine. |
 | [subagents](plugins/subagents) | New agents with their own context that report to the agent. |
 | [titles](plugins/titles) | Short session titles with a model picker and optional fallbacks. |
+| [usage](plugins/usage) | `/usage`: the token usage and the estimated cost of the saved sessions. |
 | [vim](plugins/vim) | Vim composer editing through public text widget APIs. |
 
 ## Installation
