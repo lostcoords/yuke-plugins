@@ -70,6 +70,26 @@ test("the editor starts in insert mode and Escape changes the visible cursor bef
   assertEquals(frame.frame.cursor, { column: 3, row: 1, shape: "bar" });
 });
 
+test("ctrl+c leaves Insert and Visual mode, cancels an operator, and reaches the keymap in idle Normal mode", () => {
+  const fixture = composer();
+  using frame = fixture.frame;
+  let reached = 0;
+  fixture.surface.tui.commands.add({ name: "probe", run: () => void (reached += 1) });
+  fixture.surface.tui.keys.add("ctrl+c", "probe");
+  frame.key("a l p h a space b e t a");
+  frame.key("ctrl+c");
+  assertEquals(
+    [fixture.editor.state.text, fixture.editor.caret, frame.frame.cursor?.shape],
+    ["alpha beta", 9, "block"],
+  );
+  frame.key("v h ctrl+c x");
+  assertEquals([fixture.editor.state.text, fixture.editor.caret], ["alpha bea", 8]);
+  frame.key("0 d ctrl+c w");
+  assertEquals([fixture.editor.state.text, fixture.editor.caret, reached], ["alpha bea", 6, 0]);
+  frame.key("ctrl+c");
+  assertEquals(reached, 1);
+});
+
 test("visual selection includes whole graphemes and yanks only that selection", () => {
   const fixture = composer("a👩‍💻e\u0301b");
   using frame = fixture.frame;
