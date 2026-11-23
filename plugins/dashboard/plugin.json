@@ -1,0 +1,12 @@
+{
+  "name": "dashboard",
+  "version": "0.1.0",
+  "description": "A centered start screen in an empty chat: the icon, the folder, the model, the version, and a menu of one-key actions that other plugins can extend.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"],
+      "provides": ["dashboard"]
+    }
+  }
+}
