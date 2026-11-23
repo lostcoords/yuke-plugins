@@ -1,0 +1,11 @@
+{
+  "name": "speed",
+  "version": "0.1.0",
+  "description": "The output speed of the model in the status bar, in tokens per second.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"]
+    }
+  }
+}
