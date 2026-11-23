@@ -1,0 +1,11 @@
+{
+  "name": "usage",
+  "version": "0.1.0",
+  "description": "/usage shows the token usage and the estimated cost of the saved sessions.",
+  "extensions": {
+    "sh.yuke": {
+      "entry": "src/index.ts",
+      "uses": ["chat"]
+    }
+  }
+}
