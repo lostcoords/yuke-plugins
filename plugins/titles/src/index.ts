@@ -20,8 +20,7 @@ export async function apply(ctx: PluginContext): Promise<() => Promise<void>> {
       slash: "titles:regenerate",
       description: "Regenerate this session's title from its first message",
       run: async () => {
-        const pane = tui.panes.activePane?.view;
-        const id = pane === undefined ? undefined : ctx.get("chat").sessionIdOf(pane);
+        const id = ctx.get("chat").sessionId();
 
         if (id === undefined) {
           ctx.notify("info", "Open a session before generating a title.");

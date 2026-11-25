@@ -463,7 +463,7 @@ test("an id that names no subagent of this session is an error, also the id of t
   assertEquals([unknown.isError, own.isError], [true, true]);
 });
 
-test("parallel spawns create two subagents that share one view of the parent, and a later run opens another", async () => {
+test("parallel spawns create two subagents that share one hold of the parent, and a later run opens another", async () => {
   const state = await opened([
     reply.toolCalls([
       { name: "spawn_subagent", args: SPAWN },
@@ -480,7 +480,7 @@ test("parallel spawns create two subagents that share one view of the parent, an
   ]);
   const { host, parent, list, openGate, opens } = state;
   await using _host = host;
-  const viewsOfParent = (): number => opens.filter((open) => open.id === parent.id).length;
+  const holdsOfParent = (): number => opens.filter((open) => open.id === parent.id).length;
 
   const sent = parent.sendMessage("Read the store.");
   await waitForSettled();
@@ -488,14 +488,14 @@ test("parallel spawns create two subagents that share one view of the parent, an
   await sent;
   await waitForSettled();
   assertEquals((await list.list({ parent: parent.id })).sessions.length, 2);
-  assertEquals(viewsOfParent(), 1);
+  assertEquals(holdsOfParent(), 1);
 
   await parent.sendMessage("Read it again.");
   await waitForSettled();
-  assertEquals(viewsOfParent(), 2);
+  assertEquals(holdsOfParent(), 2);
 });
 
-test("the view of the parent stays until its last subagent ends", async () => {
+test("the hold of the parent stays until its last subagent ends", async () => {
   const state = await opened([
     reply.toolCalls([
       { name: "spawn_subagent", args: SPAWN },
@@ -510,13 +510,13 @@ test("the view of the parent stays until its last subagent ends", async () => {
   await using _host = host;
   const sent = parent.sendMessage("Read the store.");
   await waitForSettled();
-  const view = opens.find((open) => open.id === parent.id)?.signal;
+  const hold = opens.find((open) => open.id === parent.id)?.signal;
   assertEquals(handle.jobs().length, 1);
-  assertEquals(view?.aborted, false);
+  assertEquals(hold?.aborted, false);
 
   await handle.stopJob(handle.jobs()[0]?.id as string);
   await waitForSettled();
-  assertEquals(view?.aborted, true);
+  assertEquals(hold?.aborted, true);
   openGate();
   await sent;
 });

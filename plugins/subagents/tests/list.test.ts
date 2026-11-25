@@ -1,4 +1,4 @@
-// The list of running subagents under the composer of the real chat: its rows at each width, and its keys in a pane.
+// The list of running subagents under the composer of the real chat: its rows at each width, and its keys.
 
 import type { ChatService } from "yuke:chat";
 import type { Sessions } from "yuke:plugins";
@@ -14,27 +14,26 @@ import {
   test,
   waitForSettled,
 } from "yuke:test";
-import { TextEditor } from "yuke:tui";
 import { type ListEntry, listRows } from "../src/list.ts";
 
 const READ: ListEntry = { label: "Read the store", model: "claude-opus-5-5", started: 0 };
 const CHECK: ListEntry = { label: "Check the tests", model: "claude-opus-5-5", started: 64_000 };
 
-test("a wide pane shows the description, the model, and the time, in columns", () => {
+test("a wide list shows the description, the model, and the time, in columns", () => {
   assertEquals(listRows([READ, CHECK], 50, 72_000), [
     "Read the store             claude-opus-5-5  1m 12s",
     "Check the tests            claude-opus-5-5      8s",
   ]);
 });
 
-test("a narrow pane drops the model of all rows and keeps the time", () => {
+test("a narrow list drops the model of all rows and keeps the time", () => {
   assertEquals(listRows([READ, CHECK], 30, 72_000), [
     "Read the store          1m 12s",
     "Check the tests             8s",
   ]);
 });
 
-test("a very narrow pane cuts the description before the time", () => {
+test("a very narrow list cuts the description before the time", () => {
   assertEquals(listRows([READ], 16, 72_000), ["Read th…  1m 12s"]);
 });
 
@@ -52,7 +51,7 @@ test("the time moves from seconds to minutes to hours", () => {
 const SPAWN = { description: "Read the store", message: "Read.", background: true };
 const HINT_ID = "subagents:subagents";
 
-/** The plugin on the real chat of a frame, with a pane that shows a new parent session. */
+/** The plugin on the real chat of a frame, which shows a new parent session. */
 async function shown(replies: readonly Reply[], height = 12) {
   const probed: { chat?: ChatService; sessions?: Sessions; settings?: SessionSettings } = {};
   const frame = createFrame({ width: 60, height }, undefined, { folder: "/w" });
@@ -113,7 +112,7 @@ function hinted(frame: FrameTest): boolean {
     .some((item) => item.id === HINT_ID);
 }
 
-test("the list shows a running subagent in the pane of its parent, and the row goes at its end", async () => {
+test("the list shows a running subagent below the composer of its parent, also while the subagent shows", async () => {
   const state = await shown([reply.stall("Reading")]);
   using _frame = state.frame;
   await using _host = state.host;
@@ -122,10 +121,7 @@ test("the list shows a running subagent in the pane of its parent, and the row g
 
   assertEquals(squeezed(state.frame).at(-1), "Read the store MiniMax-M3 0s");
   await state.chat.show(child as string);
-  assertEquals(
-    squeezed(state.frame).some((row) => row.startsWith("Read the store")),
-    false,
-  );
+  assertEquals(squeezed(state.frame).at(-1), "Read the store MiniMax-M3 0s");
 
   await state.chat.show(state.parent.id);
   await state.parent.call("stop", { id: child });
@@ -147,6 +143,20 @@ test("the waiting row shows while the parent is idle and a subagent runs", async
   await state.parent.call("stop", { id: child });
   await waitForSettled();
   assertEquals(state.frame.rows().includes("Waiting for 1 subagent"), false);
+});
+
+test("the waiting row hides while the chat shows an ended subagent", async () => {
+  const state = await shown([reply.text("Done."), reply.text("Thanks."), reply.stall("Reading")]);
+  using _frame = state.frame;
+  await using _host = state.host;
+  await spawn(state, "Read the store");
+  await spawn(state, "Check the tests");
+  const [ended] = await state.children();
+
+  const before = state.frame.rows().includes("Waiting for 1 subagent");
+  await state.chat.show(ended as string);
+
+  assertEquals([before, state.frame.rows().includes("Waiting for 1 subagent")], [true, false]);
 });
 
 test("the waiting row hides while a turn of the parent runs", async () => {
@@ -183,50 +193,28 @@ test("a short place scrolls to the selected row, so a key never acts on a hidden
   assertEquals(boldRows(state.frame), ["Read the rest MiniMax-M3 0s"]);
 });
 
-test("a pane that shows another session leaves the selection, so x does not stop a subagent of the old session", async () => {
+test("a switch to another root asks, and its stop closes the parent and the subagent and leaves the selection", async () => {
   const state = await shown([reply.stall("One")]);
   using _frame = state.frame;
   await using _host = state.host;
   await spawn(state, "Read the store");
+  const [child] = await state.children();
   const other = await state.host.openSession();
 
   state.frame.key("down");
-  await state.chat.show(other.id);
-  state.frame.key("x");
+  const showing = state.chat.show(other.id);
   await waitForSettled();
-  const typed = squeezed(state.frame);
-  await state.chat.show(state.parent.id);
-
-  assertEquals(
-    typed.some((row) => row.trim() === "x"),
-    true,
-  );
-  assertEquals(squeezed(state.frame).at(-1), "Read the store MiniMax-M3 0s");
-  assertEquals(boldRows(state.frame), []);
-  assertEquals(hinted(state.frame), false);
-});
-
-test("a focus change leaves the selection, so a key in another pane does not stop the subagent", async () => {
-  const state = await shown([reply.stall("One")]);
-  using _frame = state.frame;
-  await using _host = state.host;
-  await spawn(state, "Read the store");
-  const other = new TextEditor({ role: "composer" });
-
-  state.frame.key("down");
-  const selected = boldRows(state.frame);
-  state.frame.surface("other").tui.panes.split(() => other);
-  state.frame.key("x");
+  const asked = squeezed(state.frame).join("\n");
+  state.frame.key("enter");
+  await showing;
   await waitForSettled();
 
-  assertEquals(selected, ["Read the store MiniMax-M3 0s"]);
-  assertEquals(other.state.text, "x");
-  assertEquals(boldRows(state.frame), []);
-  assertEquals(hinted(state.frame), false);
+  assert(asked.includes("1 job is running."), asked);
   assertEquals(
-    state.frame.rows().some((row) => row.startsWith("Read the store")),
-    true,
+    [(await state.sessions.get(state.parent.id)).state, (await state.sessions.get(child as string)).state],
+    ["closed", "closed"],
   );
+  assertEquals([state.chat.sessionId(), boldRows(state.frame), hinted(state.frame)], [other.id, [], false]);
 });
 
 test("Down with no running subagent stays in the composer", async () => {
@@ -354,7 +342,7 @@ test("Down moves the caret in a draft of many rows, and selects the list only fr
   assertEquals(boldRows(state.frame), ["Read the store MiniMax-M3 0s"]);
 });
 
-test("a subagent pane shows its label and goes back to its parent, and a parent pane is not read-only", async () => {
+test("a subagent shows its label and goes back to its parent, and the parent is not read-only", async () => {
   const state = await shown([reply.stall("One")]);
   using _frame = state.frame;
   await using _host = state.host;

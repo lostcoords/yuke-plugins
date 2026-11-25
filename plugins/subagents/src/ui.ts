@@ -1,7 +1,7 @@
-import { type ChatReadOnly, type ChatService, composerRows } from "yuke:chat";
+import { type ChatService, composerRows } from "yuke:chat";
 import type { PluginContext } from "yuke:plugins";
 import type { SessionId } from "yuke:protocol";
-import { type KeyEvent, strokeOf, type Tui, type View } from "yuke:tui";
+import { type KeyEvent, strokeOf, type Tui } from "yuke:tui";
 import { type ListEntry, listRows, SHOWN } from "./list.ts";
 import { openModelDialog } from "./model-dialog.ts";
 import type { ModelList } from "./models.ts";
@@ -17,20 +17,21 @@ export interface ListedRun extends ListEntry {
 export interface UiSource {
   /** The running subagents of `parent`, oldest first. */
   readonly running: (parent: SessionId) => readonly ListedRun[];
-  /** Whether a turn of `parent` runs. */
-  readonly busy: (parent: SessionId) => boolean;
-  /** The read-only row of `session`, when it is a subagent. */
-  readonly readOnly: (session: SessionId) => ChatReadOnly | undefined;
-  /** The parents with a running subagent. */
+  /** The label of the child session `session`, when it is a subagent. */
+  readonly label: (session: SessionId) => string | undefined;
+  /** Whether any subagent runs. */
   readonly anyRunning: () => boolean;
 }
 
 const HINT = "↓↑ move · enter open · x stop · esc back";
 
-/** Show the list in a chat pane, its selection, and the view of a subagent. Return the function that draws them again. */
+/**
+ * Show the list of the subagents of the root below the composer, its selection, and the label of a shown subagent.
+ * Return the function that draws them again.
+ */
 export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, source: UiSource): () => void {
   const chat: ChatService = ctx.get("chat");
-  let selected: { readonly pane: View; readonly parent: SessionId; index: number } | undefined;
+  let selected: { readonly parent: SessionId; index: number } | undefined;
   let tick: (() => void) | undefined;
   let removeHint: (() => void) | undefined;
 
@@ -54,7 +55,7 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     if (source.anyRunning()) tick = tui.addTimer(1000, redraw);
   };
 
-  chat.addReadOnly(source.readOnly);
+  chat.addChildLabel(source.label);
 
   tui.commands.add({
     name: "models",
@@ -63,18 +64,14 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     run: () => openModelDialog(tui, models, (text) => ctx.notify("error", text)),
   });
 
-  // A selection belongs to its pane, so a key in another pane never acts on it.
-  tui.addFocusListener(() => {
-    if (selected !== undefined) leave();
-  });
-
-  chat.addComposerView("below", (_mount, pane) => {
+  // The list belongs to the root, so it stays while a subagent shows.
+  chat.addComposerView("below", (_mount, view) => {
     const rowsAt = (width: number): string[] =>
-      pane.sessionId === undefined ? [] : listRows(source.running(pane.sessionId), width, tui.now());
+      view.rootId === undefined ? [] : listRows(source.running(view.rootId), width, tui.now());
     return {
       heightFor: (width) => rowsAt(width).length,
       draw: (canvas) => {
-        const chosen = selected?.pane === pane.view && selected.parent === pane.sessionId ? selected.index : undefined;
+        const chosen = selected !== undefined && selected.parent === view.rootId ? selected.index : undefined;
         // A short place scrolls, so the selected row stays in sight.
         const first = Math.max(0, (chosen ?? 0) - canvas.height + 1);
         for (const [at, text] of rowsAt(canvas.width)
@@ -86,10 +83,11 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     };
   });
 
-  chat.addComposerView("above", (_mount, pane) =>
+  chat.addComposerView("above", (_mount, view) =>
     composerRows(() => {
-      const count =
-        pane.sessionId === undefined || source.busy(pane.sessionId) ? 0 : source.running(pane.sessionId).length;
+      const root = view.rootId;
+      // A turn of the root shows its own working row, and a shown subagent shows its own transcript.
+      const count = root === undefined || view.sessionId !== root || view.running ? 0 : source.running(root).length;
       if (count === 0) return [];
       return [{ text: `Waiting for ${count} ${count === 1 ? "subagent" : "subagents"}`, style: { dim: true } }];
     }),
@@ -98,8 +96,8 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
   /** Take a key while a row is selected. A key with no meaning here leaves the selection and goes on to the composer. */
   const selectedKey = (event: KeyEvent): boolean => {
     if (selected === undefined) return false;
-    // The pane can show another session, as after `chat.show`, and the selection stays with its list.
-    if (chat.sessionIdOf(selected.pane) !== selected.parent) {
+    // The chat can show another session, as after `chat.show`, and the selection stays with its list.
+    if (chat.sessionId() !== selected.parent) {
       leave();
       return false;
     }
@@ -134,17 +132,17 @@ export function installUi(ctx: PluginContext, tui: Tui, models: ModelList, sourc
     }
   };
 
-  chat.addPaneWatcher((pane, signal) => {
-    const composer = pane.composer;
+  chat.addViewWatcher((view, signal) => {
+    const composer = view.composer;
     const extension = composer.extend(signal);
     extension.addKeyHandler(selectedKey, "beforeKeymap");
     // This phase comes after the keymap, so a browse of older messages keeps its Down.
     extension.addKeyHandler((event) => {
       if (strokeOf(event) !== "down") return false;
-      const parent = pane.sessionId;
+      const parent = view.rootId;
       if (parent === undefined || source.running(parent).length === 0) return false;
       if (composer.rows.point(composer.caret)?.row !== composer.rows.count - 1) return false;
-      selected = { pane: pane.view, parent, index: 0 };
+      selected = { parent, index: 0 };
       removeHint = tui.status.set("subagents", { text: HINT, side: "left", order: 0 });
       tui.requestFrame();
       return true;

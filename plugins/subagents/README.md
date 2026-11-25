@@ -21,6 +21,7 @@ Running subagents appear below the composer:
 - **x** stops the selected subagent.
 
 Use `/subagents:models` to choose models. Quitting or reloading stops running subagents. The end of a run closes the
-subagent and stops its background commands, so start a long-lived process, such as a dev server, from the parent.
+subagent and stops its background commands, so start a long-lived process, such as a dev server, from the parent. The
+report names the jobs that stopped.
 
 [MIT](../../LICENSE)

@@ -12,7 +12,7 @@ Run `/reload` while idle in each Yuke process.
 
 ## Usage
 
-Open two sessions and ask an agent:
+Run yuke in two terminals and ask an agent:
 
 > Find the session working on the API. Send it the migration result and ask about compatibility issues.
 

@@ -29,7 +29,7 @@ export interface ScenarioOptions {
   replies?: readonly Reply[];
 }
 
-/** Register a test that runs `body` with a fresh session on the pane of the real chat. */
+/** Register a test that runs `body` with a fresh session in the real chat. */
 export function scenario(name: string, options: ScenarioOptions, body: (scenario: Scenario) => Promise<void>): void {
   test(name, async () => {
     let chat: ChatService | undefined;

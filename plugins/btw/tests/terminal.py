@@ -318,7 +318,7 @@ def scenario(width, height, light, inline, resume, main_running=True, cancel_sid
             pid, master = pty.fork()
             if pid == 0:
                 os.chdir(root / 'work')
-                # Also verify all-session history from a fresh, unbound pane.
+                # Also verify all-session history from a fresh chat without a session.
                 os.execve(YUKE, [YUKE] + ([] if not main_running else ['-c']), env)
             fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', height, width, 0, 0))
             pump(1)

@@ -14,10 +14,7 @@ export function apply(ctx: PluginContext): undefined {
   installStyles(tui);
   const history = new History(ctx.dataDir);
 
-  const activeSessionId = (): string | undefined => {
-    const pane = tui.panes.activePane?.view;
-    return pane === undefined ? undefined : ctx.get("chat").sessionIdOf(pane);
-  };
+  const activeSessionId = (): string | undefined => ctx.get("chat").sessionId();
 
   tui.commands.add({
     name: "ask",
