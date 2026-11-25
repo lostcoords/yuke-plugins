@@ -42,7 +42,9 @@ const SUBAGENT_PROMPT = `You are a subagent working on one task from a parent ag
 
 The parent reads only your final message, not files that you create. Put your findings there: what you did, what you found, and the absolute paths of the files that matter. Include code only when the exact text matters. Keep it concise.
 
-If you cannot finish, or you need a decision, say so in your final message. The parent can answer you.`;
+If you cannot finish, or you need a decision, say so in your final message. The parent can answer you.
+
+Your final message stops your background commands, so run each command that you need in the foreground.`;
 
 /** The count of the newest events that a report reads. The last commits of a turn hold its final message. */
 const REPORT_EVENTS = 16;
@@ -356,12 +358,19 @@ async function work(
     if (signal.aborted) void stop(active);
     else signal.addEventListener("abort", () => void stop(active));
     await handle.waitForIdle();
-    return await reportOf(id, before);
+    // The close below stops the jobs that the subagent leaves, so the report names them. A closed handle has none.
+    const left = handle.signal.aborted ? [] : handle.jobs().map((job) => job.label);
+    const report = await reportOf(id, before);
+    if (left.length === 0) return report;
+    return { ...report, text: `${report.text}\n\nThe end of the subagent stopped its jobs: ${left.join(", ")}.` };
   } finally {
     runs.delete(id);
     redraw();
     releaseParent(s.sessionId, view);
     ended.abort();
+    // A close stops the background commands of the subagent. A later message opens the session again.
+    // A rejection means that the session is not open, closes now, or that a reload runs: then its idle close ends it.
+    await sessions.closeForAll(id).catch(() => undefined);
     // A close or a reload leaves the run in the log, so the next process tells about it. A crash also leaves it.
     if (!s.signal.aborted) await log.remove(s.sessionId, [id]);
   }

@@ -372,16 +372,16 @@ test("a subagent pane shows its label and goes back to its parent, and a parent 
   assertEquals(squeezed(state.frame).at(-3), "Message…");
 });
 
-test("a subagent stays read-only after its session closes", async () => {
+test("a subagent stays read-only after the end of its run closes its session", async () => {
   const state = await shown([reply.text("Done."), reply.text("Thanks.")]);
   using _frame = state.frame;
   await using _host = state.host;
   await spawn(state, "Read the store");
   const [child] = await state.children();
+  const closed = (await state.sessions.get(child as string)).state;
 
-  await state.sessions.closeForAll(child as string);
-  await waitForSettled();
   await state.chat.show(child as string);
 
+  assertEquals(closed, "closed");
   assert(state.frame.rows().includes("Subagent: Read the store · esc back"));
 });

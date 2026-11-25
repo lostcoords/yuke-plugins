@@ -20,6 +20,7 @@ Running subagents appear below the composer:
 - **Enter** opens its transcript. **Esc** returns to the parent.
 - **x** stops the selected subagent.
 
-Use `/subagents:models` to choose models. Quitting or reloading stops running subagents.
+Use `/subagents:models` to choose models. Quitting or reloading stops running subagents. The end of a run closes the
+subagent and stops its background commands, so start a long-lived process, such as a dev server, from the parent.
 
 [MIT](../../LICENSE)

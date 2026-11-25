@@ -31,6 +31,8 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   const opening = { wait: Promise.resolve() };
   const opens: { readonly id: string; readonly signal: AbortSignal | undefined }[] = [];
   let dataDirectory = "";
+  // The signal of each job that the tool `watch` starts.
+  const watches: AbortSignal[] = [];
   const pluginApply: PluginApply = (ctx) => {
     dataDirectory = ctx.dataDir;
     const real = ctx.get("sessions");
@@ -60,6 +62,21 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
         const aborted = new Promise((resolve) => context.signal.addEventListener("abort", resolve));
         await Promise.race([gate.promise, aborted]);
         return "open";
+      },
+    });
+    s.tools.add({
+      name: "watch",
+      description: "Watch the logs in the background.",
+      concurrency: "parallel",
+      inputSchema: { type: "object", properties: {} },
+      execute: async (_args, context) => {
+        await context.jobs.run({ id: "watch", label: "Watch the logs", background: true }, (signal) => {
+          watches.push(signal);
+          return new Promise((resolve) =>
+            signal.addEventListener("abort", () => resolve({ status: "completed", text: "" })),
+          );
+        });
+        return "watching";
       },
     });
     s.tools.add({
@@ -94,7 +111,7 @@ async function opened(replies: readonly Reply[], options: Options = {}) {
   const parent = await host.openSession();
   const list = sessions as unknown as Sessions;
   const handle = await list.open(parent.id, { tail: 0, onEvent() {} });
-  return { host, parent, list, handle, openGate: gate.resolve, opening, opens, dataDir: () => dataDirectory };
+  return { host, parent, list, handle, openGate: gate.resolve, opening, opens, watches, dataDir: () => dataDirectory };
 }
 
 type Opened = Awaited<ReturnType<typeof opened>>;
@@ -300,7 +317,7 @@ test("a hook of the subagent that fails reports that the subagent did not start,
   );
 });
 
-test("the close of the parent stops a subagent that runs", async () => {
+test("the close of the parent stops a subagent that runs, and closes its session", async () => {
   const state = await opened([reply.stall("Reading")]);
   const { host, parent, list } = state;
   await using _host = host;
@@ -311,8 +328,46 @@ test("the close of the parent stops a subagent that runs", async () => {
   await list.closeForAll(parent.id);
   await waitForSettled();
 
-  assertEquals((await list.get(id)).state, "idle");
+  assertEquals((await list.get(id)).state, "closed");
   assertEquals(host.requests.length, 1);
+});
+
+test("the end of a subagent closes its session, stops the jobs that it left, and the report names them", async () => {
+  const state = await opened([
+    reply.toolCalls([{ name: "watch", args: {} }]),
+    reply.text("Two tables."),
+    reply.text("Thanks."),
+  ]);
+  const { host, parent, list, watches } = state;
+  await using _host = host;
+
+  await parent.call("spawn_subagent", SPAWN);
+  await waitForSettled();
+  const id = await childOf(state);
+
+  assertEquals((await list.get(id)).state, "closed");
+  assertEquals(
+    watches.map((signal) => signal.aborted),
+    [true],
+  );
+  assertEquals(
+    newest(host),
+    notification(id, "Two tables.\n\nThe end of the subagent stopped its jobs: Watch the logs."),
+  );
+});
+
+test("a stop of a subagent closes its session", async () => {
+  const state = await opened([reply.stall("Reading")]);
+  const { host, parent, list } = state;
+  await using _host = host;
+  await parent.call("spawn_subagent", SPAWN);
+  await waitForSettled();
+  const id = await childOf(state);
+
+  await parent.call("stop", { id });
+  await waitForSettled();
+
+  assertEquals((await list.get(id)).state, "closed");
 });
 
 test("a turn without a final message reports that, and not the message of an older turn", async () => {
